@@ -1,0 +1,17 @@
+{
+  "name": "pi-guard-rails",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^24.12.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

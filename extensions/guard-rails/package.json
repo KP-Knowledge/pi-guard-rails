@@ -1,0 +1,22 @@
+{
+  "name": "@kingpower/pi-guard-rails",
+  "version": "0.1.0",
+  "description": "Pi extension that runs guard commands in a feedback loop after agent_end",
+  "type": "module",
+  "main": "src/index.ts",
+  "pi": "src/index.ts",
+  "files": [
+    "src"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "keywords": [
+    "pi-extension",
+    "guard-rails",
+    "test-loop",
+    "feedback"
+  ],
+  "author": "Kingpower",
+  "license": "MIT"
+}
