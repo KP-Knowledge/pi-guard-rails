@@ -5,10 +5,12 @@ const mocks = {
 	sendUserMessage: vi.fn(),
 	readFileSync: vi.fn(),
 	notify: vi.fn(),
+	existsSync: vi.fn(() => true),
 };
 
 vi.mock("node:fs", () => ({
 	readFileSync: mocks.readFileSync,
+	existsSync: mocks.existsSync,
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
@@ -45,6 +47,7 @@ function loadGuards(config: unknown): void {
 describe("guardRailsExtension", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.existsSync.mockReturnValue(true);
 	});
 
 	it("subscribes to agent_end and session_start events", () => {

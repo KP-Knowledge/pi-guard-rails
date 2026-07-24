@@ -177,4 +177,41 @@ describe("loadGuardConfig", () => {
 		expect(result.guards).toHaveLength(1);
 		expect(result.guards[0].command).toBe("nx run test");
 	});
+
+	it("loads from .ai-passport/guard-rails.json when .guard-rails.json is absent", () => {
+		mkdirSync(join(TMP_DIR, ".ai-passport"), { recursive: true });
+		writeFileSync(
+			join(TMP_DIR, ".ai-passport", "guard-rails.json"),
+			JSON.stringify([{ command: "npm test" }]),
+		);
+		const result = loadGuardConfig(TMP_DIR);
+		expect(result.guards).toHaveLength(1);
+		expect(result.guards[0].command).toBe("npm test");
+		expect(result.warnings).toEqual([]);
+	});
+
+	it("prefers .guard-rails.json over .ai-passport/guard-rails.json", () => {
+		mkdirSync(join(TMP_DIR, ".ai-passport"), { recursive: true });
+		writeFileSync(
+			join(TMP_DIR, ".guard-rails.json"),
+			JSON.stringify([{ command: "from-root" }]),
+		);
+		writeFileSync(
+			join(TMP_DIR, ".ai-passport", "guard-rails.json"),
+			JSON.stringify([{ command: "from-passport" }]),
+		);
+		const result = loadGuardConfig(TMP_DIR);
+		expect(result.guards).toHaveLength(1);
+		expect(result.guards[0].command).toBe("from-root");
+	});
+
+	it("reports malformed JSON with the .ai-passport file path", () => {
+		mkdirSync(join(TMP_DIR, ".ai-passport"), { recursive: true });
+		writeFileSync(join(TMP_DIR, ".ai-passport", "guard-rails.json"), "{ not valid json");
+		const result = loadGuardConfig(TMP_DIR);
+		expect(result.guards).toEqual([]);
+		expect(result.warnings).toHaveLength(1);
+		expect(result.warnings[0]).toContain(".ai-passport/guard-rails.json");
+		expect(result.warnings[0]).toContain("malformed JSON");
+	});
 });

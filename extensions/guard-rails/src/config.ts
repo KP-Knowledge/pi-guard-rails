@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 export interface GuardConfig {
@@ -15,7 +15,7 @@ const DEFAULTS = {
 	timeout: 60000,
 } as const;
 
-const CONFIG_FILENAME = ".guard-rails.json";
+const CONFIG_PATHS = [".guard-rails.json", ".ai-passport/guard-rails.json"] as const;
 
 export interface LoadResult {
 	guards: GuardConfig[];
@@ -23,8 +23,17 @@ export interface LoadResult {
 }
 
 export function loadGuardConfig(projectRoot: string): LoadResult {
-	const filePath = join(projectRoot, CONFIG_FILENAME);
 	const warnings: string[] = [];
+
+	const filePath = CONFIG_PATHS
+		.map((rel) => join(projectRoot, rel))
+		.find((p) => existsSync(p));
+
+	if (filePath === undefined) {
+		return { guards: [], warnings };
+	}
+
+	const relPath = CONFIG_PATHS.find((rel) => filePath === join(projectRoot, rel)) ?? filePath;
 
 	let raw: string;
 	try {
@@ -37,46 +46,46 @@ export function loadGuardConfig(projectRoot: string): LoadResult {
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
-		const msg = `[guard-rails] ${CONFIG_FILENAME} is malformed JSON, ignoring.`;
+		const msg = `[guard-rails] ${relPath} is malformed JSON, ignoring.`;
 		console.log(msg);
 		warnings.push(msg);
 		return { guards: [], warnings };
 	}
 
 	if (!Array.isArray(parsed)) {
-		const msg = `[guard-rails] ${CONFIG_FILENAME} must be an array, ignoring.`;
+		const msg = `[guard-rails] ${relPath} must be an array, ignoring.`;
 		console.log(msg);
 		warnings.push(msg);
 		return { guards: [], warnings };
 	}
 
-	const guards: GuardConfig[] = [];
+	const guards: GuardConfig[] = parsed
+		.map((entry): GuardConfig | null => {
+			if (typeof entry !== "object" || entry === null) {
+				return null;
+			}
 
-	for (const entry of parsed) {
-		if (typeof entry !== "object" || entry === null) {
-			continue;
-		}
+			const obj = entry as Record<string, unknown>;
 
-		const obj = entry as Record<string, unknown>;
+			if (typeof obj.command !== "string" || obj.command.trim() === "") {
+				return null;
+			}
 
-		if (typeof obj.command !== "string" || obj.command.trim() === "") {
-			continue;
-		}
+			const guard: GuardConfig = {
+				command: obj.command,
+				cwd: typeof obj.cwd === "string" ? obj.cwd : DEFAULTS.cwd,
+				maxIterations: normalizeMaxIterations(obj.maxIterations),
+				timeout: typeof obj.timeout === "number" && obj.timeout > 0
+					? obj.timeout
+					: DEFAULTS.timeout,
+				...(typeof obj.instructions === "string" && obj.instructions.trim() !== ""
+					? { instructions: obj.instructions }
+					: {}),
+			};
 
-		const guard: GuardConfig = {
-			command: obj.command,
-			cwd: typeof obj.cwd === "string" ? obj.cwd : DEFAULTS.cwd,
-			maxIterations: normalizeMaxIterations(obj.maxIterations),
-			timeout: typeof obj.timeout === "number" && obj.timeout > 0
-				? obj.timeout
-				: DEFAULTS.timeout,
-			...(typeof obj.instructions === "string" && obj.instructions.trim() !== ""
-				? { instructions: obj.instructions }
-				: {}),
-		};
-
-		guards.push(guard);
-	}
+			return guard;
+		})
+		.filter((g): g is GuardConfig => g !== null);
 
 	return { guards, warnings };
 }
