@@ -56,7 +56,37 @@ describe("loadGuardConfig", () => {
 			maxIterations: 5,
 			timeout: 30000,
 		});
+		expect(result.guards[0].instructions).toBeUndefined();
 		expect(result.warnings).toEqual([]);
+	});
+
+	it("loads a guard with custom instructions", () => {
+		writeFileSync(
+			join(TMP_DIR, ".guard-rails.json"),
+			JSON.stringify([
+				{
+					command: "nx run test",
+					instructions: "Focus on the TypeScript errors first.",
+				},
+			]),
+		);
+		const result = loadGuardConfig(TMP_DIR);
+		expect(result.guards).toHaveLength(1);
+		expect(result.guards[0].instructions).toBe("Focus on the TypeScript errors first.");
+	});
+
+	it("ignores blank instructions", () => {
+		writeFileSync(
+			join(TMP_DIR, ".guard-rails.json"),
+			JSON.stringify([
+				{ command: "nx run test", instructions: "   " },
+				{ command: "nx run lint", instructions: 42 },
+			]),
+		);
+		const result = loadGuardConfig(TMP_DIR);
+		expect(result.guards).toHaveLength(2);
+		expect(result.guards[0].instructions).toBeUndefined();
+		expect(result.guards[1].instructions).toBeUndefined();
 	});
 
 	it("applies defaults for optional fields", () => {

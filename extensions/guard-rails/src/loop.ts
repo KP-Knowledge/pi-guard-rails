@@ -51,7 +51,7 @@ export async function runGuardLoop(
       }
 
       if (result.stdout) ui.notify(result.stdout, "warning");
-      await injectFailureMessage(pi, result, state.iterationCounts[i], guard.maxIterations);
+      await injectFailureMessage(pi, result, state.iterationCounts[i]);
       return;
     }
 
@@ -63,27 +63,30 @@ export async function runGuardLoop(
 }
 
 async function injectFailureMessage(
-  pi: ExtensionAPI,
-  result: GuardResult,
-  current: number,
-  max: number,
+	pi: ExtensionAPI,
+	result: GuardResult,
+	current: number,
 ): Promise<void> {
-  const output = formatOutput(result);
-  const exitInfo = result.timedOut
-    ? `timed out after ${result.guard.timeout}ms`
-    : `exit code ${result.code}`;
+	const output = formatOutput(result);
+	const exitInfo = result.timedOut
+		? `timed out after ${result.guard.timeout}ms`
+		: `exit code ${result.code}`;
 
-  const message = [
-    `--- Guard Rails: iteration ${current}/${max} ---`,
-    `Command: ${result.guard.command} (${exitInfo})`,
-    "",
-    "Output:",
-    output,
-    "",
-    "Please fix the failing command output above and try again.",
-  ].join("\n");
+	const lines = [
+		`--- Guard Rails: iteration ${current}/${result.guard.maxIterations} ---`,
+		`Command: ${result.guard.command} (${exitInfo})`,
+		"",
+		"Output:",
+		output,
+		"",
+		"Please fix the failing command output above and try again.",
+	];
 
-  pi.sendUserMessage(message, { deliverAs: "followUp" });
+	if (result.guard.instructions && result.guard.instructions.trim() !== "") {
+		lines.push("", "Additional instructions:", result.guard.instructions);
+	}
+
+	pi.sendUserMessage(lines.join("\n"), { deliverAs: "followUp" });
 }
 
 async function injectMaxIterationsMessage(

@@ -235,4 +235,31 @@ describe("runGuardLoop", () => {
 		expect(content).toContain("iteration 1/3");
 		expect(options).toEqual({ deliverAs: "followUp" });
 	});
+
+	it("appends custom instructions to failure message when present", async () => {
+		const pi = makePi();
+		mockExecFail(pi, "1 passing", "1 failing");
+		const guards = [makeGuard({ instructions: "Fix TypeScript errors first." })];
+		const state = createLoopState(1);
+		const ui = makeUi();
+
+		await runGuardLoop(pi, guards, state, ui);
+
+		const msg = (pi.sendUserMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		expect(msg).toContain("Additional instructions:");
+		expect(msg).toContain("Fix TypeScript errors first.");
+	});
+
+	it("does not append instructions section when guard has none", async () => {
+		const pi = makePi();
+		mockExecFail(pi, "1 passing", "1 failing");
+		const guards = [makeGuard()];
+		const state = createLoopState(1);
+		const ui = makeUi();
+
+		await runGuardLoop(pi, guards, state, ui);
+
+		const msg = (pi.sendUserMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		expect(msg).not.toContain("Additional instructions:");
+	});
 });

@@ -6,6 +6,7 @@ export interface GuardConfig {
 	cwd: string;
 	maxIterations: number;
 	timeout: number;
+	instructions?: string;
 }
 
 const DEFAULTS = {
@@ -69,6 +70,9 @@ export function loadGuardConfig(projectRoot: string): LoadResult {
 			timeout: typeof obj.timeout === "number" && obj.timeout > 0
 				? obj.timeout
 				: DEFAULTS.timeout,
+			...(typeof obj.instructions === "string" && obj.instructions.trim() !== ""
+				? { instructions: obj.instructions }
+				: {}),
 		};
 
 		guards.push(guard);
