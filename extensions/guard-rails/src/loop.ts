@@ -32,9 +32,13 @@ export async function runGuardLoop(
 
   ui.notify(`Running guards: ${guards.map(g => g.command).join(", ")}`, "info");
 
+  const history: string[] = [];
+
   try {
     for (let i = 0; i < guards.length; i++) {
       const guard = guards[i];
+      history.push(`▸ ${guard.command}  (cwd: ${guard.cwd}, timeout: ${guard.timeout}ms, maxIter: ${guard.maxIterations})`);
+      ui.setWidget("guard-rails-history", ["Guard Rails History:", ...history], { placement: "belowEditor" });
       ui.notify(`Running: ${guard.command}`, "info");
       const result = await runGuard(pi, guard);
       if (result.passed) {
@@ -51,11 +55,16 @@ export async function runGuardLoop(
       }
 
       if (result.stdout) ui.notify(result.stdout, "warning");
+      if (result.guard.instructions && result.guard.instructions.trim() !== "") {
+        ui.notify(`Instructions: ${result.guard.instructions}`, "info");
+      }
       await injectFailureMessage(pi, result, state.iterationCounts[i]);
       return;
     }
 
     ui.notify("All guards passed", "info");
+    history.push("✓ All guards passed");
+    ui.setWidget("guard-rails-history", ["Guard Rails History:", ...history], { placement: "belowEditor" });
     resetCounters(state);
   } finally {
     state.isRunningGuards = false;
@@ -63,30 +72,30 @@ export async function runGuardLoop(
 }
 
 async function injectFailureMessage(
-	pi: ExtensionAPI,
-	result: GuardResult,
-	current: number,
+  pi: ExtensionAPI,
+  result: GuardResult,
+  current: number,
 ): Promise<void> {
-	const output = formatOutput(result);
-	const exitInfo = result.timedOut
-		? `timed out after ${result.guard.timeout}ms`
-		: `exit code ${result.code}`;
+  const output = formatOutput(result);
+  const exitInfo = result.timedOut
+    ? `timed out after ${result.guard.timeout}ms`
+    : `exit code ${result.code}`;
 
-	const lines = [
-		`--- Guard Rails: iteration ${current}/${result.guard.maxIterations} ---`,
-		`Command: ${result.guard.command} (${exitInfo})`,
-		"",
-		"Output:",
-		output,
-		"",
-		"Please fix the failing command output above and try again.",
-	];
+  const lines = [
+    `--- Guard Rails: iteration ${current}/${result.guard.maxIterations} ---`,
+    `Command: ${result.guard.command} (${exitInfo})`,
+    "",
+    "Output:",
+    output,
+    "",
+    "Please fix the failing command output above and try again.",
+  ];
 
-	if (result.guard.instructions && result.guard.instructions.trim() !== "") {
-		lines.push("", "Additional instructions:", result.guard.instructions);
-	}
+  if (result.guard.instructions && result.guard.instructions.trim() !== "") {
+    lines.push("", "Additional instructions:", result.guard.instructions);
+  }
 
-	pi.sendUserMessage(lines.join("\n"), { deliverAs: "followUp" });
+  pi.sendUserMessage(lines.join("\n"), { deliverAs: "followUp" });
 }
 
 async function injectMaxIterationsMessage(

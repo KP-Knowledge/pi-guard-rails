@@ -35,7 +35,7 @@ function makeCtx(overrides?: any): any {
 	return {
 		isIdle: () => true,
 		signal: undefined,
-		ui: { notify: mocks.notify },
+		ui: { notify: mocks.notify, setWidget: vi.fn() },
 		...overrides,
 	};
 }

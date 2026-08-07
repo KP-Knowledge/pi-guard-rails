@@ -15,7 +15,7 @@ function makePi(): ExtensionAPI {
 }
 
 function makeUi(): ExtensionUIContext {
-	return { notify: vi.fn() } as unknown as ExtensionUIContext;
+	return { notify: vi.fn(), setWidget: vi.fn() } as unknown as ExtensionUIContext;
 }
 
 function makeGuard(overrides?: Partial<GuardConfig>): GuardConfig {
@@ -102,6 +102,30 @@ describe("runGuardLoop", () => {
 		expect(state.iterationCounts).toEqual([0, 0]);
 		// "All guards passed" is notified at the end
 		expect(ui.notify).toHaveBeenCalledWith("All guards passed", "info");
+	});
+
+	it("appends guard config to widget history for each guard", async () => {
+		const pi = makePi();
+		mockExecPass(pi);
+		const guards = [makeGuard(), makeGuard({ command: "nx run lint" })];
+		const state = createLoopState(2);
+		const ui = makeUi();
+
+		await runGuardLoop(pi, guards, state, ui);
+
+		const setWidget = ui.setWidget as ReturnType<typeof vi.fn>;
+		// called for each guard + final summary on success
+		expect(setWidget).toHaveBeenCalledTimes(3);
+		const firstContent = setWidget.mock.calls[0][1] as string[];
+		expect(firstContent[0]).toBe("Guard Rails History:");
+		expect(firstContent[1]).toContain("nx run test");
+		expect(firstContent[1]).toContain("timeout: 60000ms");
+		const secondContent = setWidget.mock.calls[1][1] as string[];
+		expect(secondContent).toHaveLength(3);
+		expect(secondContent[2]).toContain("nx run lint");
+		// final summary
+		const finalContent = setWidget.mock.calls[2][1] as string[];
+		expect(finalContent[finalContent.length - 1]).toContain("All guards passed");
 	});
 
 	it("injects failure message and increments counter on first failure", async () => {
