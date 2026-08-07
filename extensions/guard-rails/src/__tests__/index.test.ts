@@ -17,25 +17,29 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({}));
 
 const { default: guardRailsExtension } = await import("../index.ts");
 
-type EventHandler = (event: any, ctx: any) => void | Promise<void>;
+type CommandHandler = (args: string, ctx: any) => void | Promise<void>;
 
 function makePi(): any {
-	const handlers: Record<string, EventHandler> = {};
+	const commands: Record<string, CommandHandler> = {};
 	return {
-		on: vi.fn((event: string, handler: EventHandler) => {
-			handlers[event] = handler;
+		on: vi.fn(),
+		registerCommand: vi.fn((name: string, options: { handler: CommandHandler }) => {
+			commands[name] = options.handler;
 		}),
+		registerEntryRenderer: vi.fn(),
 		exec: mocks.exec,
 		sendUserMessage: mocks.sendUserMessage,
-		_handlers: handlers,
+		appendEntry: vi.fn(),
+		_commands: commands,
 	};
 }
 
 function makeCtx(overrides?: any): any {
 	return {
+		cwd: "/fake/project",
 		isIdle: () => true,
 		signal: undefined,
-		ui: { notify: mocks.notify, setWidget: vi.fn() },
+		ui: { notify: mocks.notify },
 		...overrides,
 	};
 }
@@ -50,15 +54,21 @@ describe("guardRailsExtension", () => {
 		mocks.existsSync.mockReturnValue(true);
 	});
 
-	it("subscribes to agent_end and session_start events", () => {
+	it("registers the /guard command", () => {
 		const pi = makePi();
 		guardRailsExtension(pi);
 
-		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
-		expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
+		expect(pi.registerCommand).toHaveBeenCalledWith("guard", expect.any(Object));
 	});
 
-	it("does nothing on agent_end when no guards are configured", async () => {
+	it("does not subscribe to agent_end or session_start events", () => {
+		const pi = makePi();
+		guardRailsExtension(pi);
+
+		expect(pi.on).not.toHaveBeenCalled();
+	});
+
+	it("does nothing when no guards are configured", async () => {
 		mocks.readFileSync.mockImplementation(() => {
 			throw new Error("ENOENT");
 		});
@@ -66,24 +76,26 @@ describe("guardRailsExtension", () => {
 		const pi = makePi();
 		guardRailsExtension(pi);
 
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, makeCtx());
+		await pi._commands["guard"]("", makeCtx());
 
 		expect(mocks.exec).not.toHaveBeenCalled();
 		expect(mocks.sendUserMessage).not.toHaveBeenCalled();
+		expect(mocks.notify).toHaveBeenCalledWith(
+			expect.stringContaining("no guards configured"),
+			"warning",
+		);
 	});
 
-	it("runs guards on agent_end when config is present", async () => {
+	it("runs guards when /guard is invoked with config present", async () => {
 		loadGuards([{ command: "nx run test", maxIterations: 3, timeout: 60000, cwd: "." }]);
 		mocks.exec.mockResolvedValue({ stdout: "ok", stderr: "", code: 0, killed: false });
 
 		const pi = makePi();
 		guardRailsExtension(pi);
 
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, makeCtx());
+		await pi._commands["guard"]("", makeCtx());
 
-		expect(mocks.exec).toHaveBeenCalledWith("nx", ["run", "test"], {
+		expect(mocks.exec).toHaveBeenCalledWith("sh", ["-c", "nx run test"], {
 			cwd: ".",
 			timeout: 60000,
 		});
@@ -97,8 +109,7 @@ describe("guardRailsExtension", () => {
 		const pi = makePi();
 		guardRailsExtension(pi);
 
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, makeCtx());
+		await pi._commands["guard"]("", makeCtx());
 
 		expect(mocks.sendUserMessage).toHaveBeenCalledTimes(1);
 		const msg = mocks.sendUserMessage.mock.calls[0][0];
@@ -114,65 +125,26 @@ describe("guardRailsExtension", () => {
 		const pi = makePi();
 		guardRailsExtension(pi);
 
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
-		const abortedCtx = makeCtx({ signal: { aborted: true } });
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, abortedCtx);
+		await pi._commands["guard"]("", makeCtx({ signal: { aborted: true } }));
 
 		expect(mocks.exec).not.toHaveBeenCalled();
 	});
 
-	it("does not re-enter guard loop when already running", async () => {
+	it("notifies on loop error when runGuardLoop throws", async () => {
 		loadGuards([{ command: "npm test", maxIterations: 3, timeout: 60000, cwd: "." }]);
 		mocks.exec.mockResolvedValue({ stdout: "ok", stderr: "", code: 0, killed: false });
 
 		const pi = makePi();
+		(pi.appendEntry as ReturnType<typeof vi.fn>).mockImplementation(() => {
+			throw new Error("entry crash");
+		});
 		guardRailsExtension(pi);
 
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
+		await pi._commands["guard"]("", makeCtx());
 
-		const ctx = makeCtx();
-		const firstCall = pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, ctx);
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, ctx);
-		await firstCall;
-
-		expect(mocks.exec).toHaveBeenCalledTimes(1);
-	});
-
-	it("resets counters on abort and runs fresh on next agent_end", async () => {
-		loadGuards([{ command: "npm test", maxIterations: 2, timeout: 60000, cwd: "." }]);
-		mocks.exec.mockResolvedValue({ stdout: "", stderr: "fail", code: 1, killed: false });
-
-		const pi = makePi();
-		guardRailsExtension(pi);
-
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
-
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, makeCtx());
-		expect(mocks.sendUserMessage).toHaveBeenCalledTimes(1);
-		expect(mocks.sendUserMessage.mock.calls[0][0]).toContain("iteration 1/2");
-
-		const abortedCtx = makeCtx({ signal: { aborted: true } });
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, abortedCtx);
-
-		await pi._handlers["agent_end"]({ type: "agent_end", messages: [] }, makeCtx());
-		expect(mocks.sendUserMessage).toHaveBeenCalledTimes(2);
-		expect(mocks.sendUserMessage.mock.calls[1][0]).toContain("iteration 1/2");
-	});
-
-	it("notifies config warnings via TUI on session_start", () => {
-		writeMalformedConfig();
-
-		const pi = makePi();
-		guardRailsExtension(pi);
-
-		pi._handlers["session_start"]({ type: "session_start" }, makeCtx());
-
-		expect(mocks.notify).toHaveBeenCalled();
-		expect(mocks.notify.mock.calls[0][0]).toContain("malformed JSON");
-		expect(mocks.notify.mock.calls[0][1]).toBe("warning");
+		expect(mocks.notify).toHaveBeenCalledWith(
+			expect.stringContaining("loop error"),
+			"error",
+		);
 	});
 });
-
-function writeMalformedConfig(): void {
-	mocks.readFileSync.mockReturnValue("{ not valid json");
-}

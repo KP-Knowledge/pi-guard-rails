@@ -89,8 +89,8 @@ describe("runGuard", () => {
 		await runGuard(pi, guard);
 
 		expect(exec).toHaveBeenCalledWith(
-			"nx",
-			["run", "test", "--skip-nx-cache"],
+			"sh",
+			["-c", "nx run test --skip-nx-cache"],
 			{ cwd: ".", timeout: 60000 },
 		);
 	});
@@ -108,8 +108,8 @@ describe("runGuard", () => {
 		await runGuard(pi, guard);
 
 		expect(exec).toHaveBeenCalledWith(
-			"nx",
-			["run", "test"],
+			"sh",
+			["-c", "nx run test"],
 			{ cwd: "packages/api", timeout: 30000 },
 		);
 	});

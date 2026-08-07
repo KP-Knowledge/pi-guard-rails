@@ -32,13 +32,12 @@ export async function runGuardLoop(
 
   ui.notify(`Running guards: ${guards.map(g => g.command).join(", ")}`, "info");
 
-  const history: string[] = [];
-
   try {
     for (let i = 0; i < guards.length; i++) {
       const guard = guards[i];
-      history.push(`▸ ${guard.command}  (cwd: ${guard.cwd}, timeout: ${guard.timeout}ms, maxIter: ${guard.maxIterations})`);
-      ui.setWidget("guard-rails-history", ["Guard Rails History:", ...history], { placement: "belowEditor" });
+      pi.appendEntry("guard-rails-history", {
+        lines: [`▸ ${guard.command}  (cwd: ${guard.cwd}, timeout: ${guard.timeout}ms, maxIter: ${guard.maxIterations})`],
+      });
       ui.notify(`Running: ${guard.command}`, "info");
       const result = await runGuard(pi, guard);
       if (result.passed) {
@@ -63,8 +62,7 @@ export async function runGuardLoop(
     }
 
     ui.notify("All guards passed", "info");
-    history.push("✓ All guards passed");
-    ui.setWidget("guard-rails-history", ["Guard Rails History:", ...history], { placement: "belowEditor" });
+    pi.appendEntry("guard-rails-history", { lines: ["✓ All guards passed"] });
     resetCounters(state);
   } finally {
     state.isRunningGuards = false;

@@ -65,9 +65,11 @@ export function formatOutput(result: GuardResult): string {
 }
 
 function splitCommand(command: string): { command: string; args: string[] } {
-	const tokens = command.trim().split(/\s+/);
+	// Pipe the entire command through sh so that pipes, quotes, and
+	// redirects work. Without this, naive whitespace splitting breaks
+	// any command that relies on shell features.
 	return {
-		command: tokens[0] ?? command,
-		args: tokens.slice(1),
+		command: "sh",
+		args: ["-c", command],
 	};
 }

@@ -11,11 +11,12 @@ function makePi(): ExtensionAPI {
 	return {
 		exec: vi.fn(),
 		sendUserMessage: vi.fn(),
+		appendEntry: vi.fn(),
 	} as unknown as ExtensionAPI;
 }
 
 function makeUi(): ExtensionUIContext {
-	return { notify: vi.fn(), setWidget: vi.fn() } as unknown as ExtensionUIContext;
+	return { notify: vi.fn() } as unknown as ExtensionUIContext;
 }
 
 function makeGuard(overrides?: Partial<GuardConfig>): GuardConfig {
@@ -104,7 +105,7 @@ describe("runGuardLoop", () => {
 		expect(ui.notify).toHaveBeenCalledWith("All guards passed", "info");
 	});
 
-	it("appends guard config to widget history for each guard", async () => {
+	it("appends guard config to history for each guard", async () => {
 		const pi = makePi();
 		mockExecPass(pi);
 		const guards = [makeGuard(), makeGuard({ command: "nx run lint" })];
@@ -113,19 +114,18 @@ describe("runGuardLoop", () => {
 
 		await runGuardLoop(pi, guards, state, ui);
 
-		const setWidget = ui.setWidget as ReturnType<typeof vi.fn>;
+		const appendEntry = pi.appendEntry as ReturnType<typeof vi.fn>;
 		// called for each guard + final summary on success
-		expect(setWidget).toHaveBeenCalledTimes(3);
-		const firstContent = setWidget.mock.calls[0][1] as string[];
-		expect(firstContent[0]).toBe("Guard Rails History:");
-		expect(firstContent[1]).toContain("nx run test");
-		expect(firstContent[1]).toContain("timeout: 60000ms");
-		const secondContent = setWidget.mock.calls[1][1] as string[];
-		expect(secondContent).toHaveLength(3);
-		expect(secondContent[2]).toContain("nx run lint");
+		expect(appendEntry).toHaveBeenCalledTimes(3);
+		const firstData = appendEntry.mock.calls[0][1] as { lines: string[] };
+		expect(firstData.lines[0]).toContain("nx run test");
+		expect(firstData.lines[0]).toContain("timeout: 60000ms");
+		const secondData = appendEntry.mock.calls[1][1] as { lines: string[] };
+		expect(secondData.lines).toHaveLength(1);
+		expect(secondData.lines[0]).toContain("nx run lint");
 		// final summary
-		const finalContent = setWidget.mock.calls[2][1] as string[];
-		expect(finalContent[finalContent.length - 1]).toContain("All guards passed");
+		const finalData = appendEntry.mock.calls[2][1] as { lines: string[] };
+		expect(finalData.lines[0]).toContain("All guards passed");
 	});
 
 	it("injects failure message and increments counter on first failure", async () => {
