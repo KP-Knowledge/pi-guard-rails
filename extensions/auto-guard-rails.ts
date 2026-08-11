@@ -3,22 +3,26 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export default function (pi: ExtensionAPI) {
   let guardEnabled = false;
   let lastTriggerEntryId: string | null = null;
+  let hasTriggered = false;
 
   console.log("[auto-guard-rails] extension loaded");
 
   // --guardrail CLI flag for non-interactive / headless mode
   pi.registerFlag("guardrail", {
     description: "Enable automatic guard-rails (review + lint + test) after each prompt",
-    handler: () => {
-      guardEnabled = true;
-      console.log("[auto-guard-rails] enabled via --guardrail flag");
-    },
+    type: "boolean",
+    default: false,
   });
 
-  // Reset on every new session
+  // Reset on every new session, check CLI flag
   pi.on("session_start", () => {
-    console.log("[auto-guard-rails] session_start, resetting trigger id");
+    console.log("[auto-guard-rails] session_start, resetting");
     lastTriggerEntryId = null;
+    hasTriggered = false;
+    if (pi.getFlag("guardrail")) {
+      guardEnabled = true;
+      console.log("[auto-guard-rails] enabled via --guardrail flag");
+    }
   });
 
   // /guardrail command — toggle auto guard-rails on/off
@@ -28,16 +32,37 @@ export default function (pi: ExtensionAPI) {
       guardEnabled = !guardEnabled;
       const status = guardEnabled ? "ON" : "OFF";
       console.log(`[auto-guard-rails] /guardrail toggled -> ${status}`);
-      ctx.ui.notify(`Guard-rails auto-run: ${status}`, "info");
+      ctx.ui.notify(`Guard-rails auto-run: ${status}`, guardEnabled ? "info" : "info");
       if (guardEnabled) {
-        ctx.ui.setStatus("guardrail", "guard-rails: on");
+        ctx.ui.setStatus("guardrail", "guard-rails: watching");
+        ctx.ui.setWidget("guardrail", [
+          "🛡️  Guard-rails: WATCHING",
+          "─  Auto-trigger after each prompt",
+          "─  /guardrail to disable",
+        ]);
       } else {
         ctx.ui.setStatus("guardrail", "");
+        ctx.ui.setWidget("guardrail", []);
       }
     },
   });
 
-  // Auto-trigger guard-rails after agent settles
+  // For print mode: append guard-rails instruction directly to the prompt
+  pi.on("input", async (event, ctx) => {
+    if (!guardEnabled) return { action: "continue" };
+    if (ctx.mode !== "print") return { action: "continue" };
+    if (hasTriggered) return { action: "continue" };
+
+    console.log("[auto-guard-rails] print mode, appending guard-rails to prompt");
+    hasTriggered = true;
+
+    return {
+      action: "transform",
+      text: event.text + '\n\nAfter completing the above, run the guard-rails workflow to review, lint, and test the changes.',
+    };
+  });
+
+  // Auto-trigger guard-rails after agent settles (interactive mode)
   pi.on("agent_settled", async (_event, ctx) => {
     console.log(`[auto-guard-rails] agent_settled fired, enabled=${guardEnabled}`);
 
@@ -46,13 +71,27 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
+    // Prevent double-fire within same session
+    if (hasTriggered) {
+      console.log("[auto-guard-rails] skipped: already triggered this session");
+      return;
+    }
+
+    // Show hook activity
+    ctx.ui.setStatus("guardrail", "guard-rails: checking...");
+
     // Find the last user message
     const entries = ctx.sessionManager.getEntries();
     const lastUserEntry = [...entries].reverse().find(
       (e) => e.role === "user"
     );
     if (!lastUserEntry) {
-      console.log("[auto-guard-rails] skipped: no user entry found");
+      // Print mode or no entries yet — trigger anyway (once)
+      console.log("[auto-guard-rails] no user entry, triggering (print mode)");
+      hasTriggered = true;
+      pi.sendUserMessage(
+        '/workflow run guard-rails "Review the changes, run lint and frontend tests, and fix any issues."'
+      );
       return;
     }
 
@@ -60,6 +99,7 @@ export default function (pi: ExtensionAPI) {
 
     if (lastUserEntry.id === lastTriggerEntryId) {
       console.log("[auto-guard-rails] skipped: same entry as last trigger");
+      ctx.ui.setStatus("guardrail", "guard-rails: watching");
       return;
     }
 
@@ -78,11 +118,22 @@ export default function (pi: ExtensionAPI) {
       text.trim() === ""
     ) {
       console.log("[auto-guard-rails] skipped: meta-command or empty");
+      // Clear running status when workflow finishes, restore watching
+      if (text.startsWith("/workflow")) {
+        ctx.ui.notify("✅ Guard-rails complete", "info");
+        ctx.ui.setStatus("guardrail", "guard-rails: watching");
+      } else {
+        ctx.ui.setStatus("guardrail", "guard-rails: watching");
+      }
       return;
     }
 
     lastTriggerEntryId = lastUserEntry.id;
+    hasTriggered = true;
     console.log("[auto-guard-rails] queueing guard-rails workflow...");
+
+    ctx.ui.notify("🔍 Running guard-rails (review → lint → test)...", "info");
+    ctx.ui.setStatus("guardrail", "guard-rails: running...");
 
     pi.sendUserMessage(
       '/workflow run guard-rails "Review the changes, run lint and frontend tests, and fix any issues."'
