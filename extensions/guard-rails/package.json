@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "description": "Pi extension that runs guard commands in a feedback loop after agent_end",
   "type": "module",
-  "main": "src/index.ts",
-  "pi": "src/index.ts",
+  "main": "index.ts",
+  "pi": "index.ts",
   "files": [
+    "index.ts",
     "src"
   ],
   "peerDependencies": {

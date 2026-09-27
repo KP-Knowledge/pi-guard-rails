@@ -15,7 +15,7 @@ vi.mock("node:fs", () => ({
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({}));
 
-const { default: guardRailsExtension } = await import("../index.ts");
+const { default: guardRailsExtension } = await import("../../index.ts");
 
 type CommandHandler = (args: string, ctx: any) => void | Promise<void>;
 

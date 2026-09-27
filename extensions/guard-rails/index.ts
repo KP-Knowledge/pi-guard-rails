@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionFactory, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadGuardConfig, type GuardConfig } from "./config.ts";
-import { createLoopState, resetCounters, runGuardLoop, type LoopState } from "./loop.ts";
-import { renderHistoryEntry } from "./history.ts";
+import { loadGuardConfig, type GuardConfig } from "./src/config.ts";
+import { createLoopState, resetCounters, runGuardLoop, type LoopState } from "./src/loop.ts";
+import { renderHistoryEntry } from "./src/history.ts";
 
 const guardRailsExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	console.log("[guard-rails] extension loaded");
