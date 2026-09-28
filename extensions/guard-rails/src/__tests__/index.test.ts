@@ -13,16 +13,22 @@ vi.mock("node:fs", () => ({
 	existsSync: mocks.existsSync,
 }));
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({}));
+vi.mock("@earendil-works/pi-coding-agent", () => ({
+	isToolCallEventType: (name: string, event: { toolName: string }) => event.toolName === name,
+}));
 
 const { default: guardRailsExtension } = await import("../../index.ts");
 
 type CommandHandler = (args: string, ctx: any) => void | Promise<void>;
+type ToolCallHandler = (event: any, ctx: any) => unknown | Promise<unknown>;
 
 function makePi(): any {
 	const commands: Record<string, CommandHandler> = {};
+	const toolCallHandlers: ToolCallHandler[] = [];
 	return {
-		on: vi.fn(),
+		on: vi.fn((name: string, handler: ToolCallHandler) => {
+			if (name === "tool_call") toolCallHandlers.push(handler);
+		}),
 		registerCommand: vi.fn((name: string, options: { handler: CommandHandler }) => {
 			commands[name] = options.handler;
 		}),
@@ -31,15 +37,17 @@ function makePi(): any {
 		sendUserMessage: mocks.sendUserMessage,
 		appendEntry: vi.fn(),
 		_commands: commands,
+		_toolCallHandlers: toolCallHandlers,
 	};
 }
 
 function makeCtx(overrides?: any): any {
 	return {
 		cwd: "/fake/project",
+		hasUI: true,
 		isIdle: () => true,
 		signal: undefined,
-		ui: { notify: mocks.notify },
+		ui: { confirm: vi.fn(), notify: mocks.notify },
 		...overrides,
 	};
 }
@@ -61,11 +69,42 @@ describe("guardRailsExtension", () => {
 		expect(pi.registerCommand).toHaveBeenCalledWith("guard", expect.any(Object));
 	});
 
-	it("does not subscribe to agent_end or session_start events", () => {
+	it("asks before creating a Git branch and allows approval", async () => {
+		const pi = makePi();
+		guardRailsExtension(pi);
+		const ctx = makeCtx({ ui: { confirm: vi.fn().mockResolvedValue(true), notify: mocks.notify } });
+
+		const result = await pi._toolCallHandlers[0]({
+			toolName: "bash",
+			input: { command: "git switch -c feature/login" },
+		}, ctx);
+
+		expect(ctx.ui.confirm).toHaveBeenCalledWith("Create Git branch?", "git switch -c feature/login");
+		expect(result).toBeUndefined();
+	});
+
+	it("blocks branch creation when rejected or approval UI is unavailable", async () => {
+		const pi = makePi();
+		guardRailsExtension(pi);
+		const event = { toolName: "bash", input: { command: "git checkout -b feature/login" } };
+		const rejected = await pi._toolCallHandlers[0](event, makeCtx({
+			ui: { confirm: vi.fn().mockResolvedValue(false), notify: mocks.notify },
+		}));
+		const noUi = await pi._toolCallHandlers[0](event, makeCtx({ hasUI: false }));
+
+		expect(rejected).toEqual({ block: true, reason: "Git branch creation declined by user." });
+		expect(noUi).toEqual({
+			block: true,
+			reason: "Git branch creation blocked because approval UI is unavailable.",
+		});
+	});
+
+	it("subscribes only to tool_call events", () => {
 		const pi = makePi();
 		guardRailsExtension(pi);
 
-		expect(pi.on).not.toHaveBeenCalled();
+		expect(pi.on).toHaveBeenCalledWith("tool_call", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledTimes(1);
 	});
 
 	it("does nothing when no guards are configured", async () => {
