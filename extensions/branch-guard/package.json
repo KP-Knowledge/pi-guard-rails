@@ -1,0 +1,23 @@
+{
+	"name": "@kingpower/pi-branch-guard",
+	"version": "3.0.0",
+	"description": "Pi extension that creates a task branch before file edits land on protected branches and nudges summarize-and-commit on settle",
+	"type": "module",
+	"main": "index.ts",
+	"pi": "index.ts",
+	"files": [
+		"index.ts",
+		"src"
+	],
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"keywords": [
+		"pi-extension",
+		"branch-guard",
+		"git",
+		"conventional-commits"
+	],
+	"author": "Kingpower",
+	"license": "MIT"
+}
