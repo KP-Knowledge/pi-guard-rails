@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { complete, type UserMessage } from "@earendil-works/pi-ai/compat";
 import type {
-	AgentEndEvent,
+	AgentSettledEvent,
 	BeforeAgentStartEvent,
 	ExtensionAPI,
 	ExtensionContext,
@@ -9,11 +9,9 @@ import type {
 	ToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
 import { type FileReader, type GuardConfig, loadConfig } from "./src/config.ts";
-import { createBranch, getCurrentBranch, getDirtyFiles } from "./src/git.ts";
 import {
 	buildBranchProposal,
 	buildBranchProposalFromPhrase,
-	bumpNudgeAttempts,
 	capturePrompt,
 	type GuardState,
 	initialGuardState,
@@ -28,7 +26,7 @@ import {
 	type IntentModelDeps,
 	type IntentSummarizer,
 } from "./src/intent.ts";
-import { buildCommitNudge, MAX_NUDGE_ATTEMPTS, shouldNudge } from "./src/lifecycle.ts";
+import { commitChanges, createBranch, getCurrentBranch, getDirtyFiles } from "./src/git.ts";
 
 const realFileReader: FileReader = (path) => readFile(path, "utf8");
 
@@ -248,38 +246,27 @@ const createGuardExtension =
 		);
 
 		pi.on(
-			"agent_end",
-			async (_event: AgentEndEvent, ctx: ExtensionContext) => {
+			"agent_settled",
+			async (_event: AgentSettledEvent, ctx: ExtensionContext) => {
 				const config = await getConfig(ctx);
 				const runner = makeRunner(pi);
 				const branch = await getCurrentBranch(runner, ctx.cwd);
-				const dirtyFiles = branch ? await getDirtyFiles(runner, ctx.cwd) : [];
-				const nudgeContext = {
-					commitOnSettle: config.commitOnSettle,
-					branch,
-					guardCreatedBranches: state.current.guard.guardCreatedBranches,
-					isDirty: dirtyFiles.length > 0,
-					nudgeAttempts: state.current.guard.nudgeAttempts,
-				};
+				const isGuardCreated = state.current.guard.guardCreatedBranches.includes(branch);
+				const dirtyFiles = isGuardCreated
+					? await getDirtyFiles(runner, ctx.cwd)
+					: [];
 
-				if (shouldNudge(nudgeContext)) {
-					updateGuard(bumpNudgeAttempts);
-					pi.sendUserMessage(buildCommitNudge(), { deliverAs: "followUp" });
+				if (!config.commitOnSettle || dirtyFiles.length === 0) {
 					return;
 				}
 
-				if (
-					nudgeContext.commitOnSettle &&
-					nudgeContext.isDirty &&
-					nudgeContext.guardCreatedBranches.includes(branch) &&
-					nudgeContext.nudgeAttempts === MAX_NUDGE_ATTEMPTS
-				) {
-					ctx.ui.notify(
-						"Branch guard: commit attempts exhausted — please summarize and commit the work manually.",
-						"warning",
-					);
-					updateGuard(bumpNudgeAttempts);
-				}
+				const result = await commitChanges(runner, ctx.cwd, branch.replace("/", ": "));
+				ctx.ui.notify(
+					result.ok
+						? `Branch guard: committed changes on ${branch}.`
+						: `Branch guard: commit failed: ${result.message || "unknown Git error"}`,
+					result.ok ? "info" : "error",
+				);
 			},
 		);
 

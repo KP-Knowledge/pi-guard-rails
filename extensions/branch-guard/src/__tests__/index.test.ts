@@ -213,7 +213,7 @@ describe("branchGuardExtension registration", () => {
 		);
 	});
 
-	it("subscribes to before_agent_start, tool_call and agent_end", () => {
+	it("subscribes to before_agent_start, tool_call and agent_settled", () => {
 		const harness = makePi();
 		createBranchGuardExtension(missingFileReader)(harness.pi);
 
@@ -222,7 +222,7 @@ describe("branchGuardExtension registration", () => {
 		);
 		expect(events).toContain("before_agent_start");
 		expect(events).toContain("tool_call");
-		expect(events).toContain("agent_end");
+		expect(events).toContain("agent_settled");
 	});
 });
 
@@ -609,7 +609,7 @@ describe("branch guard in ask mode", () => {
 	});
 });
 
-describe("commit lifecycle on agent_end", () => {
+describe("commit lifecycle on agent_settled", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -617,13 +617,12 @@ describe("commit lifecycle on agent_end", () => {
 	const guardCreatesBranch = async (
 		harness: PiHarness,
 		ctx: Record<string, unknown>,
-		prompt = "Fix the login bug",
 	): Promise<void> => {
 		await dispatch(
 			harness,
 			{
 				type: "before_agent_start",
-				prompt,
+				prompt: "Fix the login bug",
 				systemPrompt: "",
 				systemPromptOptions: {} as any,
 			},
@@ -632,134 +631,70 @@ describe("commit lifecycle on agent_end", () => {
 		await dispatch(harness, editToolCall(), ctx);
 	};
 
-	it("nudges summarize-and-commit when the tree is dirty on a guard-created branch", async () => {
+	it("commits a dirty guard-created branch after the agent settles", async () => {
 		const harness = makePi(gitScript({ branch: "main", dirty: true }));
 		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatch(harness, { type: "agent_end" }, ctx);
+		await dispatch(harness, { type: "agent_settled" }, ctx);
 
-		expect(harness.pi.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining("summar"),
-			{ deliverAs: "followUp" },
+		expect(harness.execCalls).toContainEqual(
+			expect.objectContaining({
+				command: "git",
+				args: ["add", "-A"],
+				options: { cwd: "/repo", timeout: 60000 },
+			}),
+		);
+		expect(harness.execCalls).toContainEqual(
+			expect.objectContaining({
+				command: "git",
+				args: ["commit", "-m", "fix: login-bug"],
+				options: { cwd: "/repo", timeout: 60000 },
+			}),
+		);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Branch guard: committed changes on fix/login-bug.",
+			"info",
 		);
 	});
 
-	it("stays quiet when the tree is clean", async () => {
-		const harness = makePi(gitScript({ branch: "main", dirty: false }));
+	it("does not commit a clean, unguarded, or disabled branch", async () => {
+		const cases = [
+			{ config: { mode: "auto" }, dirty: false, createBranch: true },
+			{ config: { mode: "auto" }, dirty: true, createBranch: false },
+			{ config: { mode: "auto", commitOnSettle: false }, dirty: true, createBranch: true },
+		] as const;
+
+		await cases.reduce<Promise<void>>(async (chain, testCase) => {
+			await chain;
+			const harness = makePi(gitScript({ branch: "main", dirty: testCase.dirty }));
+			createBranchGuardExtension(configReader(testCase.config))(harness.pi);
+			const ctx = makeCtx();
+			if (testCase.createBranch) await guardCreatesBranch(harness, ctx);
+			await dispatch(harness, { type: "agent_settled" }, ctx);
+			expect(harness.execCalls.some((call) => call.args[0] === "commit")).toBe(false);
+		}, Promise.resolve());
+	});
+
+	it("reports a failed commit without sending a follow-up", async () => {
+		const script = gitScript({ branch: "main", dirty: true });
+		const harness = makePi((call) =>
+			call.args[0] === "commit"
+				? { stdout: "", stderr: "identity unknown", code: 1, killed: false }
+				: script(call),
+		);
 		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatch(harness, { type: "agent_end" }, ctx);
+		await dispatch(harness, { type: "agent_settled" }, ctx);
 
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Branch guard: commit failed: identity unknown",
+			"error",
+		);
 		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it("stays quiet on a branch the guard did not create", async () => {
-		const harness = makePi(
-			gitScript({ branch: "feat/someone-else", dirty: true }),
-		);
-		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
-		const ctx = makeCtx();
-
-		await dispatch(harness, { type: "agent_end" }, ctx);
-
-		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it("stays quiet on a worktree branch the guard did not create", async () => {
-		const harness = makePi(
-			gitScript({ branch: "wt/fix-login-bug", dirty: true }),
-		);
-		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
-		const ctx = makeCtx();
-
-		await dispatch(harness, { type: "agent_end" }, ctx);
-
-		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it("stays quiet when the lifecycle is disabled", async () => {
-		const harness = makePi(gitScript({ branch: "main", dirty: true }));
-		createBranchGuardExtension(
-			configReader({ mode: "auto", commitOnSettle: false }),
-		)(harness.pi);
-		const ctx = makeCtx();
-
-		await guardCreatesBranch(harness, ctx);
-		await dispatch(harness, { type: "agent_end" }, ctx);
-
-		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
-	});
-
-	it("nudges at most 3 times, then tells the user to commit manually once", async () => {
-		const harness = makePi(gitScript({ branch: "main", dirty: true }));
-		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
-		const ctx = makeCtx();
-
-		await guardCreatesBranch(harness, ctx);
-		await dispatchTimes(harness, 5, { type: "agent_end" }, ctx);
-
-		const nudges = (harness.pi.sendUserMessage as any).mock.calls.filter(
-			([content]: [unknown]) =>
-				typeof content === "string" && content.includes("summar"),
-		);
-		expect(nudges).toHaveLength(3);
-		const exhaustionWarnings = (ctx.ui.notify as any).mock.calls.filter(
-			([message, kind]: [string, string]) =>
-				message.includes("manually") && kind === "warning",
-		);
-		expect(exhaustionWarnings).toHaveLength(1);
-	});
-
-	it("stays quiet on a clean tree even after attempts were exhausted", async () => {
-		const dirtyCell = { current: true };
-		const harness = makePi(
-			gitScript({ branch: "main", dirty: () => dirtyCell.current }),
-		);
-		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
-		const ctx = makeCtx();
-
-		await guardCreatesBranch(harness, ctx);
-		await dispatchTimes(harness, 5, { type: "agent_end" }, ctx);
-
-		dirtyCell.current = false;
-		await dispatch(harness, { type: "agent_end" }, ctx);
-
-		const exhaustionWarnings = (ctx.ui.notify as any).mock.calls.filter(
-			([message, kind]: [string, string]) =>
-				message.includes("manually") && kind === "warning",
-		);
-		expect(exhaustionWarnings).toHaveLength(1);
-	});
-
-	it("stays quiet when the agent commits after the last nudge", async () => {
-		const dirtyCell = { current: true };
-		const harness = makePi(
-			gitScript({ branch: "main", dirty: () => dirtyCell.current }),
-		);
-		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
-		const ctx = makeCtx();
-
-		await guardCreatesBranch(harness, ctx);
-		await dispatchTimes(harness, 3, { type: "agent_end" }, ctx);
-		expect(
-			(harness.pi.sendUserMessage as any).mock.calls.filter(
-				([content]: [unknown]) =>
-					typeof content === "string" && content.includes("summar"),
-			),
-		).toHaveLength(3);
-
-		dirtyCell.current = false;
-		await dispatch(harness, { type: "agent_end" }, ctx);
-
-		expect(
-			(ctx.ui.notify as any).mock.calls.filter(([message]: [string]) =>
-				message.includes("manually"),
-			),
-		).toHaveLength(0);
 	});
 });
 
@@ -1185,11 +1120,12 @@ describe("/branch command", () => {
 		const ctx = makeCtx();
 
 		await getCommand(harness).handler("Fix the login bug", ctx);
-		await dispatch(harness, { type: "agent_end" }, ctx);
+		await dispatch(harness, { type: "agent_settled" }, ctx);
 
-		expect(harness.pi.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining("summar"),
-			{ deliverAs: "followUp" },
+		expect(harness.execCalls).toContainEqual(
+			expect.objectContaining({
+				args: ["commit", "-m", "fix: login-bug"],
+			}),
 		);
 	});
 });

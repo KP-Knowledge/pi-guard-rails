@@ -17,6 +17,10 @@ export type BranchResult =
 	| { readonly ok: true; readonly branch: string }
 	| { readonly ok: false; readonly failure: BranchFailure };
 
+export type CommitResult =
+	| { readonly ok: true }
+	| { readonly ok: false; readonly message: string };
+
 export const getCurrentBranch = (
 	runner: GitRunner,
 	cwd: string,
@@ -37,6 +41,21 @@ export const getDirtyFiles = (
 					.filter((line) => line.length > 0)
 			: [],
 	);
+
+export const commitChanges = async (
+	runner: GitRunner,
+	cwd: string,
+	message: string,
+): Promise<CommitResult> => {
+	const staged = await runner("git", ["add", "-A"], cwd);
+	if (staged.code !== 0) {
+		return { ok: false, message: staged.stderr.trim() || staged.stdout.trim() };
+	}
+	const committed = await runner("git", ["commit", "-m", message], cwd);
+	return committed.code === 0
+		? { ok: true }
+		: { ok: false, message: committed.stderr.trim() || committed.stdout.trim() };
+};
 
 export const branchExists = (
 	runner: GitRunner,
