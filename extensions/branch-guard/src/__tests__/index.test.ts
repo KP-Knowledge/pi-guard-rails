@@ -213,7 +213,7 @@ describe("branchGuardExtension registration", () => {
 		);
 	});
 
-	it("subscribes to before_agent_start, tool_call and agent_settled", () => {
+	it("subscribes to before_agent_start, tool_call and agent_end", () => {
 		const harness = makePi();
 		createBranchGuardExtension(missingFileReader)(harness.pi);
 
@@ -222,7 +222,7 @@ describe("branchGuardExtension registration", () => {
 		);
 		expect(events).toContain("before_agent_start");
 		expect(events).toContain("tool_call");
-		expect(events).toContain("agent_settled");
+		expect(events).toContain("agent_end");
 	});
 });
 
@@ -609,7 +609,7 @@ describe("branch guard in ask mode", () => {
 	});
 });
 
-describe("commit lifecycle on agent_settled", () => {
+describe("commit lifecycle on agent_end", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -638,11 +638,11 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(harness.pi.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("summar"),
-			expect.anything(),
+			{ deliverAs: "followUp" },
 		);
 	});
 
@@ -652,7 +652,7 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
@@ -664,19 +664,19 @@ describe("commit lifecycle on agent_settled", () => {
 		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
 		const ctx = makeCtx();
 
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
-	it("stays quiet on wt/* branches", async () => {
+	it("stays quiet on a worktree branch the guard did not create", async () => {
 		const harness = makePi(
 			gitScript({ branch: "wt/fix-login-bug", dirty: true }),
 		);
 		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
 		const ctx = makeCtx();
 
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
@@ -689,7 +689,7 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(harness.pi.sendUserMessage).not.toHaveBeenCalled();
 	});
@@ -700,7 +700,7 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatchTimes(harness, 5, { type: "agent_settled" }, ctx);
+		await dispatchTimes(harness, 5, { type: "agent_end" }, ctx);
 
 		const nudges = (harness.pi.sendUserMessage as any).mock.calls.filter(
 			([content]: [unknown]) =>
@@ -723,10 +723,10 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatchTimes(harness, 5, { type: "agent_settled" }, ctx);
+		await dispatchTimes(harness, 5, { type: "agent_end" }, ctx);
 
 		dirtyCell.current = false;
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		const exhaustionWarnings = (ctx.ui.notify as any).mock.calls.filter(
 			([message, kind]: [string, string]) =>
@@ -744,7 +744,7 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
-		await dispatchTimes(harness, 3, { type: "agent_settled" }, ctx);
+		await dispatchTimes(harness, 3, { type: "agent_end" }, ctx);
 		expect(
 			(harness.pi.sendUserMessage as any).mock.calls.filter(
 				([content]: [unknown]) =>
@@ -753,7 +753,7 @@ describe("commit lifecycle on agent_settled", () => {
 		).toHaveLength(3);
 
 		dirtyCell.current = false;
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(
 			(ctx.ui.notify as any).mock.calls.filter(([message]: [string]) =>
@@ -1090,6 +1090,23 @@ describe("/branch command", () => {
 		);
 	});
 
+	it("creates an exact branch name with --name", async () => {
+		const harness = makePi(gitScript({ branch: "main" }));
+		createBranchGuardExtension(configReader({}))(harness.pi);
+		const ctx = makeCtx();
+
+		await getCommand(harness).handler("--name fix/cart-total-rounding", ctx);
+
+		const checkout = harness.execCalls.find(
+			(call) => call.args[0] === "checkout",
+		);
+		expect(checkout?.args).toEqual([
+			"checkout",
+			"-b",
+			"fix/cart-total-rounding",
+		]);
+	});
+
 	it("names from the captured prompt when called bare", async () => {
 		const harness = makePi(gitScript({ branch: "main" }));
 		createBranchGuardExtension(configReader({}))(harness.pi);
@@ -1168,11 +1185,11 @@ describe("/branch command", () => {
 		const ctx = makeCtx();
 
 		await getCommand(harness).handler("Fix the login bug", ctx);
-		await dispatch(harness, { type: "agent_settled" }, ctx);
+		await dispatch(harness, { type: "agent_end" }, ctx);
 
 		expect(harness.pi.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("summar"),
-			expect.anything(),
+			{ deliverAs: "followUp" },
 		);
 	});
 });

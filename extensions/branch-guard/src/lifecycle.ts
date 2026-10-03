@@ -1,5 +1,3 @@
-import { isWorktreeBranch } from "./guard.ts";
-
 export const MAX_NUDGE_ATTEMPTS = 3;
 
 export interface SettleContext {
@@ -12,7 +10,6 @@ export interface SettleContext {
 
 export const shouldNudge = (context: SettleContext): boolean =>
 	context.commitOnSettle &&
-	!isWorktreeBranch(context.branch) &&
 	context.guardCreatedBranches.includes(context.branch) &&
 	context.isDirty &&
 	context.nudgeAttempts < MAX_NUDGE_ATTEMPTS;

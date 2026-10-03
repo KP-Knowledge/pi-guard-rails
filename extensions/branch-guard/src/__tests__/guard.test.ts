@@ -181,14 +181,14 @@ describe("shouldNudge", () => {
 		expect(shouldNudge({ ...base, guardCreatedBranches: [] })).toBe(false);
 	});
 
-	it("stays quiet on worktree branches", () => {
+	it("nudges on dirty guard-created worktree branches", () => {
 		expect(
 			shouldNudge({
 				...base,
 				branch: "wt/fix-login-bug",
 				guardCreatedBranches: ["wt/fix-login-bug"],
 			}),
-		).toBe(false);
+		).toBe(true);
 	});
 
 	it("stays quiet when the tree is clean", () => {

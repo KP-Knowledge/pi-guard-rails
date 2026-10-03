@@ -1,31 +1,14 @@
-import {
-	isToolCallEventType,
-	type ExtensionAPI,
-	type ExtensionFactory,
-	type ExtensionCommandContext,
+import type {
+	ExtensionAPI,
+	ExtensionFactory,
+	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { loadGuardConfig, type GuardConfig } from "./src/config.ts";
 import { createLoopState, resetCounters, runGuardLoop, type LoopState } from "./src/loop.ts";
 import { renderHistoryEntry } from "./src/history.ts";
 
-export const createsGitBranch = (command: string): boolean =>
-	/\bgit\s+(?:switch\s+(?:-c|--create)\b|checkout\s+(?:-b|--branch)\b|worktree\s+add\s+(?:-b|--branch)\b|branch\s+(?!-)\S+)/.test(command);
-
 const guardRailsExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	console.log("[guard-rails] extension loaded");
-
-	pi.on("tool_call", async (event, ctx) => {
-		if (!isToolCallEventType("bash", event) || !createsGitBranch(event.input.command)) {
-			return undefined;
-		}
-
-		if (!ctx.hasUI) {
-			return { block: true, reason: "Git branch creation blocked because approval UI is unavailable." };
-		}
-
-		const approved = await ctx.ui.confirm("Create Git branch?", event.input.command);
-		return approved ? undefined : { block: true, reason: "Git branch creation declined by user." };
-	});
 
 	pi.registerEntryRenderer("guard-rails-history", renderHistoryEntry);
 

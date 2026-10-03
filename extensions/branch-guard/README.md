@@ -22,13 +22,13 @@ When running in Herdr (`HERDR_ENV=1`), a successful creation also sends a `herdr
 
 Stores the user prompt so it can be used for branch-name derivation.
 
-### `agent_settled` — commit nudge
+### `agent_end` — commit nudge
 
-When `commitOnSettle` is on, the current branch was guard-created, and the worktree is dirty, sends a `sendUserMessage` nudge asking the agent to summarize and commit with a conventional-commit message (no push). Capped at `MAX_NUDGE_ATTEMPTS = 3`; after exhaustion a one-time warning asks for a manual commit.
+When `commitOnSettle` is on, the current branch was guard-created, and the worktree is dirty, queues a summarize-and-commit follow-up with a conventional-commit message (no push). Capped at `MAX_NUDGE_ATTEMPTS = 3`; after exhaustion a one-time warning asks for a manual commit.
 
 ### `/branch` command
 
-`/branch "fix the login bug"` — creates the task branch immediately from the argument (or the captured prompt when no argument). Records it as guard-created so the settle nudge applies.
+`/branch "fix the login bug"` — creates an LLM-named task branch from the argument (or the captured prompt when no argument). Use `/branch --name fix/cart-total-rounding` to create exactly that name. Both are recorded as guard-created so the settle nudge applies.
 
 ## Configuration
 
@@ -37,7 +37,7 @@ When `commitOnSettle` is on, the current branch was guard-created, and the workt
 ```json
 {
   "enabled": true,
-  "mode": "ask",
+  "mode": "auto",
   "protectedBranches": ["main", "master"],
   "commitOnSettle": true
 }
@@ -63,4 +63,4 @@ Defaults come from `config.ts` (`DEFAULT_PROTECTED_BRANCHES = ["main", "master"]
 | `naming.ts` | Task-type + slug derivation for branch names. |
 | `intent.ts` | LLM prompt that summarizes the task into a 3–5 word branch phrase. |
 | `lifecycle.ts` | Settle-nudge decision (`shouldNudge`) and nudge message builder. |
-| `index.ts` | Event wiring: `before_agent_start`, `tool_call`, `agent_settled`, `/branch`. |
+| `index.ts` | Event wiring: `before_agent_start`, `tool_call`, `agent_end`, `/branch`. |

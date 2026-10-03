@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { complete, type UserMessage } from "@earendil-works/pi-ai/compat";
 import type {
-	AgentSettledEvent,
+	AgentEndEvent,
 	BeforeAgentStartEvent,
 	ExtensionAPI,
 	ExtensionContext,
@@ -28,7 +28,7 @@ import {
 	type IntentModelDeps,
 	type IntentSummarizer,
 } from "./src/intent.ts";
-import { buildCommitNudge, MAX_NUDGE_ATTEMPTS } from "./src/lifecycle.ts";
+import { buildCommitNudge, MAX_NUDGE_ATTEMPTS, shouldNudge } from "./src/lifecycle.ts";
 
 const realFileReader: FileReader = (path) => readFile(path, "utf8");
 
@@ -248,72 +248,61 @@ const createGuardExtension =
 		);
 
 		pi.on(
-			"agent_settled",
-			async (_event: AgentSettledEvent, ctx: ExtensionContext) => {
+			"agent_end",
+			async (_event: AgentEndEvent, ctx: ExtensionContext) => {
 				const config = await getConfig(ctx);
-				if (!config.commitOnSettle) {
-					return;
-				}
-
 				const runner = makeRunner(pi);
 				const branch = await getCurrentBranch(runner, ctx.cwd);
-				if (!branch || isWorktreeBranch(branch)) {
+				const dirtyFiles = branch ? await getDirtyFiles(runner, ctx.cwd) : [];
+				const nudgeContext = {
+					commitOnSettle: config.commitOnSettle,
+					branch,
+					guardCreatedBranches: state.current.guard.guardCreatedBranches,
+					isDirty: dirtyFiles.length > 0,
+					nudgeAttempts: state.current.guard.nudgeAttempts,
+				};
+
+				if (shouldNudge(nudgeContext)) {
+					updateGuard(bumpNudgeAttempts);
+					pi.sendUserMessage(buildCommitNudge(), { deliverAs: "followUp" });
 					return;
 				}
 
-				if (!state.current.guard.guardCreatedBranches.includes(branch)) {
-					return;
+				if (
+					nudgeContext.commitOnSettle &&
+					nudgeContext.isDirty &&
+					nudgeContext.guardCreatedBranches.includes(branch) &&
+					nudgeContext.nudgeAttempts === MAX_NUDGE_ATTEMPTS
+				) {
+					ctx.ui.notify(
+						"Branch guard: commit attempts exhausted — please summarize and commit the work manually.",
+						"warning",
+					);
+					updateGuard(bumpNudgeAttempts);
 				}
-
-				const dirtyFiles = await getDirtyFiles(runner, ctx.cwd);
-				if (dirtyFiles.length === 0) {
-					return;
-				}
-
-				if (state.current.guard.nudgeAttempts >= MAX_NUDGE_ATTEMPTS) {
-					if (state.current.guard.nudgeAttempts === MAX_NUDGE_ATTEMPTS) {
-						ctx.ui.notify(
-							"Branch guard: commit attempts exhausted — please summarize and commit the work manually.",
-							"warning",
-						);
-						updateGuard(bumpNudgeAttempts);
-					}
-					return;
-				}
-
-				updateGuard(bumpNudgeAttempts);
-				pi.sendUserMessage(buildCommitNudge(), {});
 			},
 		);
 
 		pi.registerCommand("branch", {
-			description: "Create a task branch from the prompt or given description",
+			description: "Create a task branch; use --name for an exact branch name",
 			handler: async (args: string, ctx) => {
+				const manualBranch = args.trim().match(/^--name\s+(.+)$/)?.[1]?.trim();
 				const task =
 					args.trim() ||
 					resolveTaskPrompt(
 						state.current.guard,
 						ctx.sessionManager.getEntries(),
 					);
-				if (!task.trim()) {
-					ctx.ui.notify('Usage: /branch "fix the login bug"', "error");
+				const proposal = manualBranch ? undefined : await resolveProposal(task, ctx);
+				const branch = manualBranch ?? proposal?.branch;
+				if (!branch) {
+					ctx.ui.notify('Usage: /branch "fix the login bug" or /branch --name feat/my-branch', "error");
 					return;
 				}
-				const proposal = await resolveProposal(task, ctx);
-				if (!proposal) {
-					ctx.ui.notify('Usage: /branch "fix the login bug"', "error");
-					return;
+				const result = await createGuardedBranch(branch, ctx);
+				if (result?.reason) {
+					ctx.ui.notify(result.reason, "error");
 				}
-				const runner = makeRunner(pi);
-				const created = await createBranch(runner, ctx.cwd, proposal.branch);
-				if (!created.ok) {
-					ctx.ui.notify(created.failure.message, "error");
-					return;
-				}
-				updateGuard((guard) =>
-					recordGuardCreatedBranch(guard, proposal.branch),
-				);
-				notifyBranchCreated(pi, ctx, proposal.branch);
 			},
 		});
 	};
