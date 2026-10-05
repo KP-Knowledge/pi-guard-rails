@@ -219,10 +219,10 @@ const createGuardExtension =
 				label: `Confirm to create branch ${proposal.branch}`,
 			});
 			const choice = await ctx.ui.select("Branch guard", [
-				`Create branch ${proposal.branch}`,
+				`Confirm to create branch ${proposal.branch}`,
 				`Proceed unprotected on ${branch} (this session)`,
 			]);
-			if (choice === `Create branch ${proposal.branch}`) {
+			if (choice === `Confirm to create branch ${proposal.branch}`) {
 				return createGuardedBranch(proposal.branch, ctx);
 			}
 

@@ -502,7 +502,7 @@ describe("branch guard in ask mode", () => {
 			{ active: true, label: "Confirm to create branch fix/login-bug" },
 		);
 		expect(ctx.ui.select).toHaveBeenCalledWith("Branch guard", [
-			"Create branch fix/login-bug",
+			"Confirm to create branch fix/login-bug",
 			"Proceed unprotected on main (this session)",
 		]);
 		const checkout = harness.execCalls.find(
