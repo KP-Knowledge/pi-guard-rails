@@ -1,17 +1,22 @@
 # pi-guard-rails
 
-A [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent) extension that runs guard commands in a feedback loop via the `/guard` command. If a guard command fails, the output is injected back into the session so the agent can fix it — looping until all guards pass or a configurable max iteration count is reached.
+A [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent) extension that runs guard commands (lint/test/build) in a feedback loop. When the agent finishes a turn that changed the codebase, guards run automatically; if a guard fails, the output is injected back into the session so the agent can fix it — looping until all guards pass or a configurable max iteration count is reached. A `/guard` command is also available for manual runs.
 
 ## How it works
 
-1. Run the `/guard` command in your pi session.
-2. The extension loads guard commands from your config file.
-3. Each configured guard command (e.g. `nx run test`) runs in sequence.
-4. If all guards pass, the session ends normally and iteration counters reset.
-5. If any guard fails, the failure output is injected as a follow-up user message via `pi.sendUserMessage()`, triggering a new agent turn to fix the issue.
-6. The loop repeats (re-run `/guard`) until all guards pass or `maxIterations` is reached for a failing guard.
-7. If max iterations is hit, a final summary is injected and the loop stops for that guard.
-8. Guard runs and results are appended to a custom `guard-rails-history` entry in the session history.
+### Automatic mode (default)
+
+1. At session start the extension captures a git tree-state fingerprint of your project (`git status --porcelain` + `git diff HEAD`).
+2. When the agent settles after a turn, the fingerprint is re-read. If nothing changed (read-only turns), nothing runs.
+3. If the tree changed, each configured guard command runs in sequence.
+4. If a guard fails, the failure output is appended to the session as a `guard-rails-failure` message and the agent continues with one more request to fix it.
+5. On the next settle the fingerprint still differs from the baseline, so guards re-run — until all pass (baseline refreshes) or `maxIterations` is reached (loop gives up).
+
+Automatic mode requires the project to be a git repository.
+
+### Manual mode
+
+Run the `/guard` command in your pi session. Guards run the same way; failures are injected as a follow-up user message via `pi.sendUserMessage()`. Guard runs and results are appended to a custom `guard-rails-history` entry in the session history.
 
 ## Installation
 
@@ -25,7 +30,7 @@ Add the extension to your pi-coding-agent configuration:
 
 ## Configuration
 
-Create a `.guard-rails.json` file in your project root, or at `.ai-passport/guard-rails.json`. The file is a JSON array of guard objects. `.guard-rails.json` takes precedence when both exist.
+Create a `.guard-rails.json` file in your project root, or at `.ai-passport/guard-rails.json`. The file is either a JSON array of guard objects (auto mode defaults to on) or an object with `guards` and an optional `auto` flag. `.guard-rails.json` takes precedence when both exist.
 
 ```json
 [
@@ -58,7 +63,9 @@ Create a `.guard-rails.json` file in your project root, or at `.ai-passport/guar
 ### Behavior
 
 - **Missing config file**: extension does nothing (no-op, reports a warning).
-- **Malformed JSON / non-array**: extension does nothing (no-op, logs a warning).
+- **Malformed JSON / invalid shape**: extension does nothing (no-op, logs a warning).
+- **Auto mode off** (`"auto": false`) or non-git project: only the `/guard` command runs guards.
+- **Agent aborted/errored**: counters reset; guards do not run.
 - **Multiple guards**: all guards run in sequence each iteration. All must pass for the loop to stop. The loop stops at the first failing guard and injects its output.
 - **Timeout**: if a command exceeds its timeout, the process is killed and treated as a failure with partial output. The failure message reports `timed out after <n>ms`.
 - **Pass/fail**: exit code `0` = pass, any non-zero = fail.
@@ -72,6 +79,17 @@ Create a `.guard-rails.json` file in your project root, or at `.ai-passport/guar
   { "command": "npm test" }
 ]
 ```
+
+### Disabling automatic mode
+
+```json
+{
+  "auto": false,
+  "guards": [{ "command": "npm test" }]
+}
+```
+
+With `"auto": false` guards only run when you invoke `/guard`.
 
 This runs `npm test` when `/guard` is invoked, up to 3 iterations, with a 60-second timeout.
 

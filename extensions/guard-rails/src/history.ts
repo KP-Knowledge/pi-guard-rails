@@ -1,4 +1,4 @@
-import type { EntryRenderer, EntryRenderOptions } from "@earendil-works/pi-coding-agent";
+import type { EntryRenderer, EntryRenderOptions, MessageRenderer, MessageRenderOptions } from "@earendil-works/pi-coding-agent";
 import type { CustomEntry } from "@earendil-works/pi-coding-agent";
 
 interface HistoryEntryData {
@@ -21,6 +21,14 @@ export const renderHistoryEntry: EntryRenderer<HistoryEntryData> = (
 ): SimpleComponent => {
 	const lines = entry.data?.lines ?? [];
 	return createLinesComponent(lines);
+};
+
+export const renderFailureMessage: MessageRenderer = (
+	message,
+	_options: MessageRenderOptions,
+): SimpleComponent => {
+	const content = typeof message.content === "string" ? message.content : "";
+	return createLinesComponent(content.split("\n"));
 };
 
 const ELLIPSIS = "…";

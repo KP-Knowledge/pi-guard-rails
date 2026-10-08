@@ -214,4 +214,55 @@ describe("loadGuardConfig", () => {
 		expect(result.warnings[0]).toContain(".ai-passport/guard-rails.json");
 		expect(result.warnings[0]).toContain("malformed JSON");
 	});
+
+	describe("auto flag", () => {
+		it("defaults to true for the array shape", () => {
+			writeFileSync(
+				join(TMP_DIR, ".guard-rails.json"),
+				JSON.stringify([{ command: "npm test" }]),
+			);
+			const result = loadGuardConfig(TMP_DIR);
+			expect(result.auto).toBe(true);
+		});
+
+		it("defaults to true for the object shape without auto", () => {
+			writeFileSync(
+				join(TMP_DIR, ".guard-rails.json"),
+				JSON.stringify({ guards: [{ command: "npm test" }] }),
+			);
+			const result = loadGuardConfig(TMP_DIR);
+			expect(result.auto).toBe(true);
+			expect(result.guards).toHaveLength(1);
+		});
+
+		it("can be disabled with auto: false in the object shape", () => {
+			writeFileSync(
+				join(TMP_DIR, ".guard-rails.json"),
+				JSON.stringify({ auto: false, guards: [{ command: "npm test" }] }),
+			);
+			const result = loadGuardConfig(TMP_DIR);
+			expect(result.auto).toBe(false);
+			expect(result.guards).toHaveLength(1);
+		});
+
+		it("treats a non-boolean auto value as enabled", () => {
+			writeFileSync(
+				join(TMP_DIR, ".guard-rails.json"),
+				JSON.stringify({ auto: "nope", guards: [{ command: "npm test" }] }),
+			);
+			const result = loadGuardConfig(TMP_DIR);
+			expect(result.auto).toBe(true);
+		});
+
+		it("warns when the object shape has no guards array", () => {
+			writeFileSync(
+				join(TMP_DIR, ".guard-rails.json"),
+				JSON.stringify({ auto: true }),
+			);
+			const result = loadGuardConfig(TMP_DIR);
+			expect(result.guards).toEqual([]);
+			expect(result.warnings).toHaveLength(1);
+			expect(result.warnings[0]).toContain("guards");
+		});
+	});
 });

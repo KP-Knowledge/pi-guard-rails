@@ -5,12 +5,11 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { loadGuardConfig, type GuardConfig } from "./src/config.ts";
 import { createLoopState, resetCounters, runGuardLoop, type LoopState } from "./src/loop.ts";
-import { renderHistoryEntry } from "./src/history.ts";
+import { renderHistoryEntry, renderFailureMessage } from "./src/history.ts";
+import { registerAutoTrigger } from "./src/auto.ts";
 
 const guardRailsExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 	console.log("[guard-rails] extension loaded");
-
-	pi.registerEntryRenderer("guard-rails-history", renderHistoryEntry);
 
 	const loadGuards = (cwd: string): { guards: GuardConfig[]; loopState: LoopState } => {
 		const result = loadGuardConfig(cwd);
@@ -18,6 +17,11 @@ const guardRailsExtension: ExtensionFactory = (pi: ExtensionAPI) => {
 		const loopState = createLoopState(guards.length);
 		return { guards, loopState };
 	};
+
+	pi.registerEntryRenderer("guard-rails-history", renderHistoryEntry);
+	pi.registerMessageRenderer("guard-rails-failure", renderFailureMessage);
+
+	registerAutoTrigger(pi);
 
 	pi.registerCommand("guard", {
 		description: "Run configured guard commands (lint/test/build) in a feedback loop",

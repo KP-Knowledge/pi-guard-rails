@@ -13,31 +13,28 @@ vi.mock("node:fs", () => ({
 	existsSync: mocks.existsSync,
 }));
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-	isToolCallEventType: (name: string, event: { toolName: string }) => event.toolName === name,
-}));
-
 const { default: guardRailsExtension } = await import("../../index.ts");
 
 type CommandHandler = (args: string, ctx: any) => void | Promise<void>;
-type ToolCallHandler = (event: any, ctx: any) => unknown | Promise<unknown>;
+type EventHandler = (event: any, ctx: any) => unknown | Promise<unknown>;
 
 function makePi(): any {
 	const commands: Record<string, CommandHandler> = {};
-	const toolCallHandlers: ToolCallHandler[] = [];
+	const handlers: Record<string, EventHandler> = {};
 	return {
-		on: vi.fn((name: string, handler: ToolCallHandler) => {
-			if (name === "tool_call") toolCallHandlers.push(handler);
+		on: vi.fn((name: string, handler: EventHandler) => {
+			handlers[name] = handler;
 		}),
 		registerCommand: vi.fn((name: string, options: { handler: CommandHandler }) => {
 			commands[name] = options.handler;
 		}),
 		registerEntryRenderer: vi.fn(),
+		registerMessageRenderer: vi.fn(),
 		exec: mocks.exec,
 		sendUserMessage: mocks.sendUserMessage,
 		appendEntry: vi.fn(),
 		_commands: commands,
-		_toolCallHandlers: toolCallHandlers,
+		_handlers: handlers,
 	};
 }
 
@@ -62,18 +59,21 @@ describe("guardRailsExtension", () => {
 		mocks.existsSync.mockReturnValue(true);
 	});
 
-	it("registers the /guard command", () => {
+	it("registers the /guard command and auto-trigger handlers", () => {
 		const pi = makePi();
 		guardRailsExtension(pi);
 
 		expect(pi.registerCommand).toHaveBeenCalledWith("guard", expect.any(Object));
-	});
-
-	it("does not register a Git branch confirmation handler", () => {
-		const pi = makePi();
-		guardRailsExtension(pi);
-
-		expect(pi.on).not.toHaveBeenCalled();
+		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("agent_before_settle", expect.any(Function));
+		expect(pi.registerEntryRenderer).toHaveBeenCalledWith(
+			"guard-rails-history",
+			expect.any(Function),
+		);
+		expect(pi.registerMessageRenderer).toHaveBeenCalledWith(
+			"guard-rails-failure",
+			expect.any(Function),
+		);
 	});
 
 	it("does nothing when no guards are configured", async () => {
@@ -154,5 +154,20 @@ describe("guardRailsExtension", () => {
 			expect.stringContaining("loop error"),
 			"error",
 		);
+	});
+
+	it("captures the git baseline on session_start", async () => {
+		mocks.exec.mockResolvedValue({ stdout: "M file.ts", stderr: "", code: 0, killed: false });
+
+		const pi = makePi();
+		guardRailsExtension(pi);
+
+		await pi._handlers["session_start"]({ type: "session_start", reason: "startup" }, makeCtx());
+
+		expect(mocks.exec).toHaveBeenCalledTimes(1);
+		const call = (mocks.exec as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(call[0]).toBe("sh");
+		expect(call[1][1]).toContain("git rev-parse");
+		expect(call[2]).toMatchObject({ cwd: "/fake/project" });
 	});
 });

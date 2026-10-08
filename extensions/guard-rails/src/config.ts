@@ -19,6 +19,7 @@ const CONFIG_PATHS = [".guard-rails.json", ".ai-passport/guard-rails.json"] as c
 
 export interface LoadResult {
 	guards: GuardConfig[];
+	auto: boolean;
 	warnings: string[];
 }
 
@@ -30,7 +31,7 @@ export function loadGuardConfig(projectRoot: string): LoadResult {
 		.find((p) => existsSync(p));
 
 	if (filePath === undefined) {
-		return { guards: [], warnings };
+		return { guards: [], auto: true, warnings };
 	}
 
 	const relPath = CONFIG_PATHS.find((rel) => filePath === join(projectRoot, rel)) ?? filePath;
@@ -39,7 +40,7 @@ export function loadGuardConfig(projectRoot: string): LoadResult {
 	try {
 		raw = readFileSync(filePath, "utf-8");
 	} catch {
-		return { guards: [], warnings };
+		return { guards: [], auto: true, warnings };
 	}
 
 	let parsed: unknown;
@@ -49,17 +50,27 @@ export function loadGuardConfig(projectRoot: string): LoadResult {
 		const msg = `[guard-rails] ${relPath} is malformed JSON, ignoring.`;
 		console.log(msg);
 		warnings.push(msg);
-		return { guards: [], warnings };
+		return { guards: [], auto: true, warnings };
 	}
 
-	if (!Array.isArray(parsed)) {
-		const msg = `[guard-rails] ${relPath} must be an array, ignoring.`;
+	if (!Array.isArray(parsed) && !isGuardsObject(parsed)) {
+		const msg = `[guard-rails] ${relPath} must be an array or an object with a "guards" array, ignoring.`;
 		console.log(msg);
 		warnings.push(msg);
-		return { guards: [], warnings };
+		return { guards: [], auto: true, warnings };
 	}
 
-	const guards: GuardConfig[] = parsed
+	const auto = isGuardsObject(parsed) ? parsed.auto !== false : true;
+	const rawGuards = Array.isArray(parsed) ? parsed : parsed.guards;
+
+	if (!Array.isArray(rawGuards)) {
+		const msg = `[guard-rails] ${relPath} "guards" must be an array, ignoring.`;
+		console.log(msg);
+		warnings.push(msg);
+		return { guards: [], auto: true, warnings };
+	}
+
+	const guards: GuardConfig[] = rawGuards
 		.map((entry): GuardConfig | null => {
 			if (typeof entry !== "object" || entry === null) {
 				return null;
@@ -87,8 +98,18 @@ export function loadGuardConfig(projectRoot: string): LoadResult {
 		})
 		.filter((g): g is GuardConfig => g !== null);
 
-	return { guards, warnings };
+	return { guards, auto, warnings };
 }
+
+interface GuardsObject {
+	guards: unknown;
+	auto: unknown;
+}
+
+const isGuardsObject = (value: unknown): value is GuardsObject =>
+	typeof value === "object"
+	&& value !== null
+	&& Array.isArray((value as GuardsObject).guards);
 
 function normalizeMaxIterations(value: unknown): number {
 	if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {

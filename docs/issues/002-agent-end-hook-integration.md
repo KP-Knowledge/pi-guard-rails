@@ -2,6 +2,10 @@
 
 - [001-config-schema](./001-config-schema.md)
 
+> **Superseded:** resolved by [ADR-0001](../adr/0001-auto-trigger-hook.md) —
+> `agent_end` was rejected in favor of `agent_before_settle` + git tree-state
+> detection; the `willRetry` field assumed below does not exist in the API.
+
 ## Question
 
 How does the extension integrate with the `agent_end` lifecycle hook? Specifically:

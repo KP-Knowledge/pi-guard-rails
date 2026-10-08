@@ -11,10 +11,12 @@
 - **Boundary entry drafts** — `custom` / `custom_message` / `context_edit` /
   `compaction` entries a boundary handler proposes; `custom_message` reaches
   both transcript and model.
-- **Mutation flag** — session state set when a file-mutating tool call
-  (`edit`/`write`, maybe `bash` — ADR-0001 Q1) completes; gates whether the
-  settle handler runs guards.
-- **`fixPending`** — session state meaning a failure was injected and the loop
-  awaits a fix; forces guards to re-run on the next settle regardless of the
-  mutation flag (ADR-0001 Q2).
+- **Mutation flag / tree-state fingerprint** — the git-based detection signal:
+  `git status --porcelain` + `git diff HEAD` output captured at `session_start`
+  (baseline) and compared at every settle. Unchanged → skip; changed → run
+  guards. The baseline updates only when all guards pass (see ADR-0001).
+- **Baseline** — the last tree-state fingerprint at which all guards passed;
+  a still-failing tree keeps differing from it, driving the fix loop.
+- **`fixPending`** — considered and dropped: the baseline-only-updates-on-pass
+  rule gives the same re-run-until-pass semantics without extra state.
 - **`/guard`** — manual slash command that runs the same guard loop on demand.
