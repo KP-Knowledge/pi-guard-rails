@@ -501,7 +501,7 @@ describe("branch guard in ask mode", () => {
 			"herdr:blocked",
 			{ active: true, label: "Confirm to create branch fix/login-bug" },
 		);
-		expect(ctx.ui.select).toHaveBeenCalledWith("Branch guard", [
+		expect(ctx.ui.select).toHaveBeenCalledWith("Confirm to create branch", [
 			"Confirm to create branch fix/login-bug",
 			"Proceed unprotected on main (this session)",
 		]);
@@ -632,11 +632,13 @@ describe("commit lifecycle on agent_settled", () => {
 	};
 
 	it("commits a dirty guard-created branch after the agent settles", async () => {
-		const harness = makePi(gitScript({ branch: "main", dirty: true }));
+		const dirtyNow = { value: false };
+		const harness = makePi(gitScript({ branch: "main", dirty: () => dirtyNow.value }));
 		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
+		dirtyNow.value = true;
 		await dispatch(harness, { type: "agent_settled" }, ctx);
 
 		expect(harness.execCalls).toContainEqual(
@@ -677,8 +679,20 @@ describe("commit lifecycle on agent_settled", () => {
 		}, Promise.resolve());
 	});
 
+	it("does not commit a pre-existing dirty tree when the agent changed nothing", async () => {
+		const harness = makePi(gitScript({ branch: "main", dirty: true }));
+		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
+		const ctx = makeCtx();
+
+		await guardCreatesBranch(harness, ctx);
+		await dispatch(harness, { type: "agent_settled" }, ctx);
+
+		expect(harness.execCalls.some((call) => call.args[0] === "commit")).toBe(false);
+	});
+
 	it("reports a failed commit without sending a follow-up", async () => {
-		const script = gitScript({ branch: "main", dirty: true });
+		const dirtyNow = { value: false };
+		const script = gitScript({ branch: "main", dirty: () => dirtyNow.value });
 		const harness = makePi((call) =>
 			call.args[0] === "commit"
 				? { stdout: "", stderr: "identity unknown", code: 1, killed: false }
@@ -688,6 +702,7 @@ describe("commit lifecycle on agent_settled", () => {
 		const ctx = makeCtx();
 
 		await guardCreatesBranch(harness, ctx);
+		dirtyNow.value = true;
 		await dispatch(harness, { type: "agent_settled" }, ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -1115,11 +1130,23 @@ describe("/branch command", () => {
 	});
 
 	it("records the branch for the commit lifecycle", async () => {
-		const harness = makePi(gitScript({ branch: "main", dirty: true }));
+		const dirtyNow = { value: false };
+		const harness = makePi(gitScript({ branch: "main", dirty: () => dirtyNow.value }));
 		createBranchGuardExtension(configReader({}))(harness.pi);
 		const ctx = makeCtx();
 
+		await dispatch(
+			harness,
+			{
+				type: "before_agent_start",
+				prompt: "Fix the login bug",
+				systemPrompt: "",
+				systemPromptOptions: {} as any,
+			},
+			ctx,
+		);
 		await getCommand(harness).handler("Fix the login bug", ctx);
+		dirtyNow.value = true;
 		await dispatch(harness, { type: "agent_settled" }, ctx);
 
 		expect(harness.execCalls).toContainEqual(

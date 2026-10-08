@@ -22,9 +22,9 @@ When running in Herdr (`HERDR_ENV=1`), a successful creation also sends a `herdr
 
 Stores the user prompt so it can be used for branch-name derivation.
 
-### `agent_end` — commit nudge
+### `agent_settled` — commit on change
 
-When `commitOnSettle` is on, the current branch was guard-created, and the worktree is dirty, queues a summarize-and-commit follow-up with a conventional-commit message (no push). Capped at `MAX_NUDGE_ATTEMPTS = 3`; after exhaustion a one-time warning asks for a manual commit.
+When `commitOnSettle` is on and the current branch was guard-created, compares the git tree-state fingerprint (`git status --porcelain` + `git diff HEAD`) against the one captured at `before_agent_start`. Only when the tree changed during the agent run it commits everything (`git add -A`, message derived from the branch name, no push). A pre-existing dirty tree with no agent changes is left alone.
 
 ### `/branch` command
 
@@ -58,7 +58,7 @@ Defaults come from `config.ts` (`DEFAULT_PROTECTED_BRANCHES = ["main", "master"]
 | File | Role |
 |------|------|
 | `config.ts` | Config load + normalization, `FileReader` type. |
-| `git.ts` | `GitRunner`-based git ops: current branch, dirty files, `git switch -c`. |
+| `git.ts` | `GitRunner`-based git ops: current branch, tree-state fingerprint, `git switch -c`. |
 | `guard.ts` | Immutable `GuardState` transitions, protected/worktree branch checks, prompt resolution. |
 | `naming.ts` | Task-type + slug derivation for branch names. |
 | `intent.ts` | LLM prompt that summarizes the task into a 3–5 word branch phrase. |

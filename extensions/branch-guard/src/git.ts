@@ -29,18 +29,19 @@ export const getCurrentBranch = (
 		result.code === 0 ? result.stdout.trim() : "",
 	);
 
-export const getDirtyFiles = (
+export type TreeState = string | null;
+
+export const readTreeState = async (
 	runner: GitRunner,
 	cwd: string,
-): Promise<string[]> =>
-	runner("git", ["status", "--porcelain"], cwd).then((result) =>
-		result.code === 0
-			? result.stdout
-					.split("\n")
-					.map((line) => line.trim())
-					.filter((line) => line.length > 0)
-			: [],
-	);
+): Promise<TreeState> => {
+	const status = await runner("git", ["status", "--porcelain=v1", "-uall"], cwd);
+	if (status.code !== 0) {
+		return null;
+	}
+	const diff = await runner("git", ["diff", "HEAD"], cwd);
+	return `${status.stdout}\n--\n${diff.code === 0 ? diff.stdout : ""}`;
+};
 
 export const commitChanges = async (
 	runner: GitRunner,

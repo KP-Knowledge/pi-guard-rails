@@ -20,3 +20,6 @@
 - **`fixPending`** — considered and dropped: the baseline-only-updates-on-pass
   rule gives the same re-run-until-pass semantics without extra state.
 - **`/guard`** — manual slash command that runs the same guard loop on demand.
+- **Run-start baseline** — branch-guard's per-run variant of the fingerprint:
+  captured at `before_agent_start`, compared at `agent_settled` to decide
+  whether the agent's work needs committing (ADR-0002).

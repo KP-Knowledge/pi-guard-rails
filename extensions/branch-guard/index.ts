@@ -26,7 +26,7 @@ import {
   type IntentModelDeps,
   type IntentSummarizer,
 } from "./src/intent.ts";
-import { commitChanges, createBranch, getCurrentBranch, getDirtyFiles } from "./src/git.ts";
+import { commitChanges, createBranch, getCurrentBranch, readTreeState, type TreeState } from "./src/git.ts";
 
 const realFileReader: FileReader = (path) => readFile(path, "utf8");
 
@@ -35,11 +35,13 @@ const MODIFYING_TOOLS: readonly string[] = ["edit", "write"];
 interface SessionState {
   config: GuardConfig | undefined;
   guard: GuardState;
+  runStartTree: TreeState | undefined;
 }
 
 const newSessionState = (): SessionState => ({
   config: undefined,
   guard: initialGuardState(),
+  runStartTree: undefined,
 });
 
 const makeRunner =
@@ -240,8 +242,10 @@ const createGuardExtension =
 
       pi.on(
         "before_agent_start",
-        (event: BeforeAgentStartEvent, _ctx: ExtensionContext) => {
+        async (event: BeforeAgentStartEvent, ctx: ExtensionContext) => {
           updateGuard((guard) => capturePrompt(guard, event.prompt));
+          const tree = await readTreeState(makeRunner(pi), ctx.cwd);
+          state.current = { ...state.current, runStartTree: tree };
         },
       );
 
@@ -255,16 +259,28 @@ const createGuardExtension =
           const config = await getConfig(ctx);
           const runner = makeRunner(pi);
           const branch = await getCurrentBranch(runner, ctx.cwd);
-          const isGuardCreated = state.current.guard.guardCreatedBranches.includes(branch);
-          const dirtyFiles = isGuardCreated
-            ? await getDirtyFiles(runner, ctx.cwd)
-            : [];
+          if (!config.commitOnSettle) {
+            return;
+          }
 
-          if (!config.commitOnSettle || dirtyFiles.length === 0) {
+          const isGuardCreated = state.current.guard.guardCreatedBranches.includes(branch);
+          if (!isGuardCreated) {
+            return;
+          }
+
+          const runStartTree = state.current.runStartTree;
+          if (runStartTree === undefined) {
+            return;
+          }
+          const tree = await readTreeState(runner, ctx.cwd);
+          if (tree === null || tree === runStartTree) {
             return;
           }
 
           const result = await commitChanges(runner, ctx.cwd, branch.replace("/", ": "));
+          if (result.ok) {
+            state.current = { ...state.current, runStartTree: "" };
+          }
           ctx.ui.notify(
             result.ok
               ? `Branch guard: committed changes on ${branch}.`

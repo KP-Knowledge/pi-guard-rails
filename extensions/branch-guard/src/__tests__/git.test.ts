@@ -8,7 +8,7 @@ import {
 	type ExecResultLike,
 	type GitRunner,
 	getCurrentBranch,
-	getDirtyFiles,
+	readTreeState,
 } from "../git.ts";
 
 const ok = (stdout = ""): ExecResultLike => ({
@@ -48,24 +48,26 @@ describe("getCurrentBranch", () => {
 	});
 });
 
-describe("getDirtyFiles", () => {
-	it("returns empty list for clean tree", async () => {
-		const runner = runnerFrom(() => ok(""));
-		expect(await getDirtyFiles(runner, "/repo")).toEqual([]);
+describe("readTreeState", () => {
+	it("combines status and diff output into a fingerprint", async () => {
+		const runner = runnerFrom((_command, args) =>
+			args[0] === "status" ? ok(" M src/a.ts\n") : ok("+dirty\n"),
+		);
+		expect(await readTreeState(runner, "/repo")).toBe(" M src/a.ts\n\n--\n+dirty\n");
 	});
 
-	it("parses porcelain lines into file names", async () => {
-		const runner = runnerFrom(() => ok(" M src/a.ts\n?? b.txt\nA  c.md\n"));
-		expect(await getDirtyFiles(runner, "/repo")).toEqual([
-			"M src/a.ts",
-			"?? b.txt",
-			"A  c.md",
-		]);
+	it("ignores a failing diff (fresh repo without commits)", async () => {
+		const runner = runnerFrom((_command, args) =>
+			args[0] === "status" ? ok("?? b.txt\n") : fail("fatal: bad revision HEAD", 128),
+		);
+		expect(await readTreeState(runner, "/repo")).toBe("?? b.txt\n\n--\n");
 	});
 
-	it("returns empty list when git fails", async () => {
-		const runner = runnerFrom(() => fail("boom"));
-		expect(await getDirtyFiles(runner, "/repo")).toEqual([]);
+	it("returns null when status fails (not a git repository)", async () => {
+		const runner = runnerFrom((_command, args) =>
+			args[0] === "status" ? fail("fatal: not a git repository", 128) : ok(""),
+		);
+		expect(await readTreeState(runner, "/repo")).toBeNull();
 	});
 });
 
@@ -219,6 +221,19 @@ describe("real git integration", () => {
 				encoding: "utf8",
 			}).trim(),
 		).toBe("main");
+	});
+
+	it("produces a stable fingerprint that changes when content changes", async () => {
+		const repo = initRepo();
+		const before = await readTreeState(realRunner, repo);
+		const again = await readTreeState(realRunner, repo);
+		expect(again).toBe(before);
+		expect(before).not.toContain("a.txt");
+
+		writeFileSync(join(repo, "a.txt"), "changed");
+		const dirty = await readTreeState(realRunner, repo);
+		expect(dirty).not.toBe(before);
+		expect(dirty).toContain("a.txt");
 	});
 
 	it("detects existing branches with show-ref", async () => {
