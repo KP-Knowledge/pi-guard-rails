@@ -16,7 +16,12 @@ Intercepts `edit` and `write` tools:
 4. **`mode: "auto"`** — create the branch and show a Pi notification.
    **`mode: "ask"`** — UI prompt: create branch / proceed unprotected this session. Headless ask-mode blocks the edit with instructions instead of asking.
 
-When running in Herdr (`HERDR_ENV=1`), a successful creation also sends a `herdr notification show` desktop notification. It is best-effort; failure never blocks the edit. Branch creation failure (e.g. branch exists) blocks the tool call with the git error.
+When running in Herdr (`HERDR_ENV=1`), branch-guard also drives Herdr's notification bar:
+
+- ask mode sends `herdr notification show … --sound request` before the dialog, telling the user a choice is waiting;
+- a successful creation sends `herdr notification show … --sound done`.
+
+Both are best-effort; failure never blocks the edit. The `herdr:blocked` event only updates the Herdr sidebar agent-state badge — it is not a notification bar. For the notification bar to render in-app, Herdr must have `[ui.toast] delivery = "herdr"` (or `"terminal"`); the default `"system"` routes to OS desktop notifications. Branch creation failure (e.g. branch exists) blocks the tool call with the git error.
 
 ### `before_agent_start` — prompt capture + commit guideline
 

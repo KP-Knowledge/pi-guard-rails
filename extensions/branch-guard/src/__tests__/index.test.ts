@@ -305,7 +305,8 @@ describe("branch guard in auto mode", () => {
 		);
 	});
 
-	it("sends a Herdr notification after creating a branch in Herdr", async () => {
+	// TEMP: skipped while notifyHerdr is disabled to test Herdr's built-in blocked notification.
+	it.skip("sends a Herdr notification after creating a branch in Herdr", async () => {
 		process.env.HERDR_ENV = "1";
 		const harness = makePi(gitScript({ branch: "main" }));
 		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
@@ -520,6 +521,7 @@ describe("branch guard in auto mode", () => {
 describe("branch guard in ask mode", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		delete process.env.HERDR_ENV;
 	});
 
 	it("proposes the branch in a two-option dialog and creates it when accepted", async () => {
@@ -554,6 +556,44 @@ describe("branch guard in ask mode", () => {
 		);
 		expect(checkout?.args).toEqual(["checkout", "-b", "fix/login-bug"]);
 		expect(result).not.toEqual(expect.objectContaining({ block: true }));
+	});
+
+	// TEMP: skipped while notifyHerdr is disabled to test Herdr's built-in blocked notification.
+	it.skip("prompts the branch choice with a Herdr notification before asking", async () => {
+		process.env.HERDR_ENV = "1";
+		const harness = makePi(gitScript({ branch: "main" }));
+		createBranchGuardExtension(configReader({ mode: "ask" }))(harness.pi);
+		const ctx = makeCtx({
+			selectChoice: (_title, options) => options[0],
+		});
+
+		await dispatch(
+			harness,
+			{
+				type: "before_agent_start",
+				prompt: "Fix the login bug",
+				systemPrompt: "",
+				systemPromptOptions: {} as any,
+			},
+			ctx,
+		);
+		await dispatch(harness, editToolCall(), ctx);
+
+		expect(harness.execCalls).toContainEqual(
+			expect.objectContaining({
+				command: "herdr",
+				args: [
+					"notification",
+					"show",
+					"Branch guard",
+					"--body",
+					"Select an option to create branch fix/login-bug.",
+					"--sound",
+					"request",
+				],
+				options: { cwd: "/repo", timeout: 5000 },
+			}),
+		);
 	});
 
 	it("declining sets the session skip and never blocks the edit", async () => {

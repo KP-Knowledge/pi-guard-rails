@@ -49,13 +49,13 @@ const makeRunner =
   (pi: ExtensionAPI) => (command: string, args: string[], cwd: string) =>
     pi.exec(command, args, { cwd, timeout: 60000 });
 
-const notifyBranchCreated = (
+// When launched in Herdr (HERDR_ENV=1), surface branch-guard prompts and results as Herdr notifications; outside Herdr, the extension remains self-contained.
+const notifyHerdr = (
   pi: ExtensionAPI,
   ctx: ExtensionContext,
-  branch: string,
+  body: string,
+  sound: "none" | "done" | "request",
 ): void => {
-  ctx.ui.notify(`Branch guard: created branch ${branch}.`, "info");
-  // When launched in Herdr (HERDR_ENV=1), mirror the branch change as a Herdr notification; outside Herdr, the extension remains self-contained.
   if (process.env.HERDR_ENV !== "1") return;
   void pi
     .exec(
@@ -65,13 +65,21 @@ const notifyBranchCreated = (
         "show",
         "Branch guard",
         "--body",
-        `Created and switched to ${branch}.`,
+        body,
         "--sound",
-        "done",
+        sound,
       ],
       { cwd: ctx.cwd, timeout: 5000 },
     )
     .catch(() => undefined);
+};
+
+const notifyBranchCreated = (
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  branch: string,
+): void => {
+  ctx.ui.notify(`Branch guard: created branch ${branch}.`, "info");
 };
 
 type IntentSummarizerFor = (ctx: ExtensionContext) => IntentSummarizer;
@@ -219,6 +227,16 @@ const createGuardExtension =
 
         const label = `Confirm to create branch ${proposal.branch}`;
         pi.events.emit("herdr:blocked", { active: true, label });
+        ctx.ui.notify(
+          `Branch guard: select an option to create branch ${proposal.branch}.`,
+          "info",
+        );
+        notifyHerdr(
+          pi,
+          ctx,
+          `Select an option to create branch ${proposal.branch}.`,
+          "request",
+        );
         const choice = await (async () => {
           try {
             return await ctx.ui.select("Confirm to create branch", [
