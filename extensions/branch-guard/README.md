@@ -18,9 +18,11 @@ Intercepts `edit` and `write` tools:
 
 When running in Herdr (`HERDR_ENV=1`), a successful creation also sends a `herdr notification show` desktop notification. It is best-effort; failure never blocks the edit. Branch creation failure (e.g. branch exists) blocks the tool call with the git error.
 
-### `before_agent_start` — prompt capture
+### `before_agent_start` — prompt capture + commit guideline
 
-Stores the user prompt so it can be used for branch-name derivation.
+Stores the user prompt so it can be used for branch-name derivation, and appends
+`COMMIT_GUIDELINE` to the run's system prompt so the agent commits without asking
+for confirmation. The guideline is only added while `commitOnSettle` is on.
 
 ### `agent_settled` — commit on change
 
@@ -62,5 +64,5 @@ Defaults come from `config.ts` (`DEFAULT_PROTECTED_BRANCHES = ["main", "master"]
 | `guard.ts` | Immutable `GuardState` transitions, protected/worktree branch checks, prompt resolution. |
 | `naming.ts` | Task-type + slug derivation for branch names. |
 | `intent.ts` | LLM prompt that summarizes the task into a 3–5 word branch phrase. |
-| `lifecycle.ts` | Settle-nudge decision (`shouldNudge`) and nudge message builder. |
+| `lifecycle.ts` | `COMMIT_GUIDELINE` injected into the system prompt. |
 | `index.ts` | Event wiring: `before_agent_start`, `tool_call`, `agent_end`, `/branch`. |

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
 	buildBranchProposal,
 	buildBranchProposalFromPhrase,
-	bumpNudgeAttempts,
 	initialGuardState,
 	isProtectedBranch,
 	isWorktreeBranch,
@@ -11,11 +10,7 @@ import {
 	recordGuardCreatedBranch,
 	resolveLatestUserPrompt,
 } from "../guard.ts";
-import {
-	buildCommitNudge,
-	MAX_NUDGE_ATTEMPTS,
-	shouldNudge,
-} from "../lifecycle.ts";
+import { COMMIT_GUIDELINE } from "../lifecycle.ts";
 
 const messageEntry = (
 	role: string,
@@ -35,7 +30,6 @@ describe("guard state", () => {
 		const state = initialGuardState();
 		expect(state.skipped).toBe(false);
 		expect(state.guardCreatedBranches).toEqual([]);
-		expect(state.nudgeAttempts).toBe(0);
 		expect(state.capturedPrompt).toBe("");
 	});
 
@@ -51,13 +45,6 @@ describe("guard state", () => {
 		const after = recordGuardCreatedBranch(before, "feat/add-dark-mode");
 		expect(before.guardCreatedBranches).toEqual([]);
 		expect(after.guardCreatedBranches).toEqual(["feat/add-dark-mode"]);
-	});
-
-	it("bumpNudgeAttempts counts up without mutating", () => {
-		const before = initialGuardState();
-		const after = bumpNudgeAttempts(bumpNudgeAttempts(before));
-		expect(before.nudgeAttempts).toBe(0);
-		expect(after.nudgeAttempts).toBe(2);
 	});
 });
 
@@ -160,55 +147,9 @@ describe("buildBranchProposalFromPhrase", () => {
 	});
 });
 
-describe("shouldNudge", () => {
-	const base = {
-		commitOnSettle: true,
-		branch: "feat/add-dark-mode",
-		guardCreatedBranches: ["feat/add-dark-mode"],
-		isDirty: true,
-		nudgeAttempts: 0,
-	};
-
-	it("nudges on a dirty guard-created branch", () => {
-		expect(shouldNudge(base)).toBe(true);
-	});
-
-	it("stays quiet when the lifecycle is disabled", () => {
-		expect(shouldNudge({ ...base, commitOnSettle: false })).toBe(false);
-	});
-
-	it("stays quiet on non-guard-created branches", () => {
-		expect(shouldNudge({ ...base, guardCreatedBranches: [] })).toBe(false);
-	});
-
-	it("nudges on dirty guard-created worktree branches", () => {
-		expect(
-			shouldNudge({
-				...base,
-				branch: "wt/fix-login-bug",
-				guardCreatedBranches: ["wt/fix-login-bug"],
-			}),
-		).toBe(true);
-	});
-
-	it("stays quiet when the tree is clean", () => {
-		expect(shouldNudge({ ...base, isDirty: false })).toBe(false);
-	});
-
-	it("stays quiet after exhausting attempts", () => {
-		expect(shouldNudge({ ...base, nudgeAttempts: MAX_NUDGE_ATTEMPTS })).toBe(
-			false,
-		);
-		expect(MAX_NUDGE_ATTEMPTS).toBe(3);
-	});
-});
-
-describe("buildCommitNudge", () => {
-	it("instructs summarize + conventional commit and forbids pushing", () => {
-		const nudge = buildCommitNudge();
-		expect(nudge).toContain("summar");
-		expect(nudge).toContain("commit");
-		expect(nudge).toContain("conventional");
-		expect(nudge.toLowerCase()).toContain("do not push");
+describe("COMMIT_GUIDELINE", () => {
+	it("forbids asking for commit confirmation", () => {
+		expect(COMMIT_GUIDELINE).toContain("automatically");
+		expect(COMMIT_GUIDELINE.toLowerCase()).toContain("do not ask");
 	});
 });

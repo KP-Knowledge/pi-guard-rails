@@ -10,7 +10,6 @@ import {
 export interface GuardState {
 	readonly skipped: boolean;
 	readonly guardCreatedBranches: readonly string[];
-	readonly nudgeAttempts: number;
 	readonly capturedPrompt: string;
 }
 
@@ -23,7 +22,6 @@ export interface BranchProposal {
 export const initialGuardState = (): GuardState => ({
 	skipped: false,
 	guardCreatedBranches: [],
-	nudgeAttempts: 0,
 	capturedPrompt: "",
 });
 
@@ -46,11 +44,6 @@ export const capturePrompt = (
 ): GuardState => ({
 	...state,
 	capturedPrompt: prompt,
-});
-
-export const bumpNudgeAttempts = (state: GuardState): GuardState => ({
-	...state,
-	nudgeAttempts: state.nudgeAttempts + 1,
 });
 
 export const isProtectedBranch = (

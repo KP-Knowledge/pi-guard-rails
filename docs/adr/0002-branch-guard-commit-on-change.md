@@ -40,6 +40,7 @@ its loop re-runs guards across settles; branch-guard acts once per run.)
   content makes the fingerprint equal the baseline → no commit (status alone
   would miss this; `git diff HEAD` catches it except for byte-identical
   reverts, which are genuinely no-change).
-- `lifecycle.ts` (summarize-and-commit nudge, `MAX_NUDGE_ATTEMPTS`) remains
-  unwired dead code from an earlier design; the commit is direct. Cleanup is
-  tracked separately.
+- `lifecycle.ts` no longer carries the old summarize-and-commit nudge
+  (`shouldNudge`, `MAX_NUDGE_ATTEMPTS`); it now exports `COMMIT_GUIDELINE`,
+  which `before_agent_start` appends to the system prompt so the agent does
+  not ask for commit confirmation.

@@ -26,6 +26,7 @@ import {
   type IntentModelDeps,
   type IntentSummarizer,
 } from "./src/intent.ts";
+import { COMMIT_GUIDELINE } from "./src/lifecycle.ts";
 import { commitChanges, createBranch, getCurrentBranch, readTreeState, type TreeState } from "./src/git.ts";
 
 const realFileReader: FileReader = (path) => readFile(path, "utf8");
@@ -243,6 +244,13 @@ const createGuardExtension =
       pi.on(
         "before_agent_start",
         async (event: BeforeAgentStartEvent, ctx: ExtensionContext) => {
+          const config = await getConfig(ctx);
+          if (config.enabled && config.commitOnSettle) {
+            event.systemPromptOptions.promptGuidelines = [
+              ...(event.systemPromptOptions.promptGuidelines ?? []),
+              COMMIT_GUIDELINE,
+            ];
+          }
           updateGuard((guard) => capturePrompt(guard, event.prompt));
           const tree = await readTreeState(makeRunner(pi), ctx.cwd);
           state.current = { ...state.current, runStartTree: tree };

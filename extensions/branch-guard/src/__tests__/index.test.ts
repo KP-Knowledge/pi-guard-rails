@@ -9,6 +9,7 @@ import {
 	createBranchGuardExtensionWithIntent,
 } from "../../index.ts";
 import type { IntentSummarizer } from "../intent.ts";
+import { COMMIT_GUIDELINE } from "../lifecycle.ts";
 
 interface ExecCall {
 	command: string;
@@ -223,6 +224,49 @@ describe("branchGuardExtension registration", () => {
 		expect(events).toContain("before_agent_start");
 		expect(events).toContain("tool_call");
 		expect(events).toContain("agent_settled");
+	});
+});
+
+describe("commit guideline injection", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("appends the no-ask commit guideline to the system prompt", async () => {
+		const harness = makePi();
+		createBranchGuardExtension(configReader({ mode: "auto" }))(harness.pi);
+		const ctx = makeCtx();
+		const event = {
+			type: "before_agent_start",
+			prompt: "Fix the login bug",
+			systemPrompt: "",
+			systemPromptOptions: { promptGuidelines: ["existing"] } as any,
+		};
+
+		await dispatch(harness, event, ctx);
+
+		expect(event.systemPromptOptions.promptGuidelines).toEqual([
+			"existing",
+			COMMIT_GUIDELINE,
+		]);
+	});
+
+	it("does not inject the guideline when commit on settle is off", async () => {
+		const harness = makePi();
+		createBranchGuardExtension(
+			configReader({ mode: "auto", commitOnSettle: false }),
+		)(harness.pi);
+		const ctx = makeCtx();
+		const event = {
+			type: "before_agent_start",
+			prompt: "Fix the login bug",
+			systemPrompt: "",
+			systemPromptOptions: { promptGuidelines: [] } as any,
+		};
+
+		await dispatch(harness, event, ctx);
+
+		expect(event.systemPromptOptions.promptGuidelines).toEqual([]);
 	});
 });
 
