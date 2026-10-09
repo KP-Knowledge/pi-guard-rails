@@ -2,5 +2,5 @@
   "enabled": true,
   "mode": "auto",
   "protectedBranches": ["main", "master"],
-  "commitOnSettle": true
+  "commitOnSettle": "any"
 }

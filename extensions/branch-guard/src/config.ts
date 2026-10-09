@@ -2,11 +2,13 @@ import { join } from "node:path";
 
 export type GuardMode = "ask" | "auto";
 
+export type CommitOnSettle = boolean | "any";
+
 export interface GuardConfig {
 	readonly enabled: boolean;
 	readonly mode: GuardMode;
 	readonly protectedBranches: readonly string[];
-	readonly commitOnSettle: boolean;
+	readonly commitOnSettle: CommitOnSettle;
 }
 
 export type FileReader = (path: string) => Promise<string>;
@@ -34,6 +36,12 @@ const normalizeBranches = (value: unknown): readonly string[] | undefined =>
 		? value.filter((entry): entry is string => typeof entry === "string")
 		: undefined;
 
+const normalizeCommitOnSettle = (
+	value: unknown,
+	fallback: CommitOnSettle,
+): CommitOnSettle =>
+	value === "any" ? "any" : isBoolean(value) ? value : fallback;
+
 export const loadConfig = async (
 	readFile: FileReader,
 	cwd: string,
@@ -56,9 +64,10 @@ export const loadConfig = async (
 			protectedBranches:
 				normalizeBranches(record.protectedBranches) ??
 				defaults.protectedBranches,
-			commitOnSettle: isBoolean(record.commitOnSettle)
-				? record.commitOnSettle
-				: defaults.commitOnSettle,
+			commitOnSettle: normalizeCommitOnSettle(
+				record.commitOnSettle,
+				defaults.commitOnSettle,
+			),
 		};
 	} catch {
 		return defaults;

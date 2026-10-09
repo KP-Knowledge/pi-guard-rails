@@ -745,6 +745,58 @@ describe("commit lifecycle on agent_settled", () => {
 		);
 	});
 
+	it("commits a manually-created branch in \"any\" mode", async () => {
+		const dirtyNow = { value: false };
+		const harness = makePi(
+			gitScript({ branch: "feat/manual", dirty: () => dirtyNow.value }),
+		);
+		createBranchGuardExtension(
+			configReader({ mode: "auto", commitOnSettle: "any" }),
+		)(harness.pi);
+		const ctx = makeCtx();
+
+		await dispatch(
+			harness,
+			{
+				type: "before_agent_start",
+				prompt: "Fix the login bug",
+				systemPrompt: "",
+				systemPromptOptions: {} as any,
+			},
+			ctx,
+		);
+		dirtyNow.value = true;
+		await dispatch(harness, { type: "agent_settled" }, ctx);
+
+		expect(harness.execCalls.some((call) => call.args[0] === "commit")).toBe(true);
+	});
+
+	it("never commits a protected branch, even in \"any\" mode", async () => {
+		const dirtyNow = { value: false };
+		const harness = makePi(
+			gitScript({ branch: "main", dirty: () => dirtyNow.value }),
+		);
+		createBranchGuardExtension(
+			configReader({ mode: "auto", commitOnSettle: "any" }),
+		)(harness.pi);
+		const ctx = makeCtx();
+
+		await dispatch(
+			harness,
+			{
+				type: "before_agent_start",
+				prompt: "Fix the login bug",
+				systemPrompt: "",
+				systemPromptOptions: {} as any,
+			},
+			ctx,
+		);
+		dirtyNow.value = true;
+		await dispatch(harness, { type: "agent_settled" }, ctx);
+
+		expect(harness.execCalls.some((call) => call.args[0] === "commit")).toBe(false);
+	});
+
 	it("does not commit a clean, unguarded, or disabled branch", async () => {
 		const cases = [
 			{ config: { mode: "auto" }, dirty: false, createBranch: true },

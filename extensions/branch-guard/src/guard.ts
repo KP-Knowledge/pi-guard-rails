@@ -1,4 +1,5 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { CommitOnSettle } from "./config.ts";
 import {
 	buildBranchName,
 	deriveSlug,
@@ -53,6 +54,16 @@ export const isProtectedBranch = (
 
 export const isWorktreeBranch = (branch: string): boolean =>
 	branch.startsWith("wt/");
+
+export const shouldAutoCommit = (
+	state: GuardState,
+	branch: string,
+	commitOnSettle: CommitOnSettle,
+	protectedBranches: readonly string[],
+): boolean =>
+	commitOnSettle !== false &&
+	!isProtectedBranch(branch, protectedBranches) &&
+	(commitOnSettle === "any" || state.guardCreatedBranches.includes(branch));
 
 export const resolveLatestUserPrompt = (
 	entries: readonly SessionEntry[],

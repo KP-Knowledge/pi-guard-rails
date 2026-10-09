@@ -31,7 +31,14 @@ for confirmation. The guideline is only added while `commitOnSettle` is on.
 
 ### `agent_settled` — commit on change
 
-When `commitOnSettle` is on and the current branch was guard-created, compares the git tree-state fingerprint (`git status --porcelain` + `git diff HEAD`) against the one captured at `before_agent_start`. Only when the tree changed during the agent run it commits everything (`git add -A`, message derived from the branch name, no push). A pre-existing dirty tree with no agent changes is left alone.
+When `commitOnSettle` is on, compares the git tree-state fingerprint (`git status --porcelain` + `git diff HEAD`) against the one captured at `before_agent_start`. Only when the tree changed during the agent run it commits everything (`git add -A`, message derived from the branch name, no push). A pre-existing dirty tree with no agent changes is left alone.
+
+Which branches it commits depends on the `commitOnSettle` value:
+
+- `true` (default) — only branches branch-guard created itself this session;
+- `"any"` — any branch, including ones created manually or in a previous session.
+
+Protected branches (`protectedBranches`) are **never** committed to in either mode, so an unprotected-proceed on `main` stays untouched.
 
 ### `/branch` command
 
@@ -49,6 +56,8 @@ When `commitOnSettle` is on and the current branch was guard-created, compares t
   "commitOnSettle": true
 }
 ```
+
+`commitOnSettle` accepts `true` (guard-created branches only), `"any"` (any non-protected branch) or `false` (never).
 
 Defaults come from `config.ts` (`DEFAULT_PROTECTED_BRANCHES = ["main", "master"]`).
 

@@ -114,6 +114,14 @@ describe("loadConfig", () => {
 		expect(config.protectedBranches).toEqual(["main", "master"]);
 	});
 
+	it("accepts the \"any\" commit-on-settle mode", async () => {
+		const config = await loadConfig(
+			readerReturning(JSON.stringify({ commitOnSettle: "any" })),
+			"/repo",
+		);
+		expect(config.commitOnSettle).toBe("any");
+	});
+
 	it("normalizes non-boolean fields to defaults", async () => {
 		const config = await loadConfig(
 			readerReturning(JSON.stringify({ enabled: "yes", commitOnSettle: 1 })),

@@ -20,6 +20,7 @@ import {
   markSkipped,
   recordGuardCreatedBranch,
   resolveTaskPrompt,
+  shouldAutoCommit,
 } from "./src/guard.ts";
 import {
   createModelIntentSummarizer,
@@ -285,12 +286,14 @@ const createGuardExtension =
           const config = await getConfig(ctx);
           const runner = makeRunner(pi);
           const branch = await getCurrentBranch(runner, ctx.cwd);
-          if (!config.commitOnSettle) {
-            return;
-          }
-
-          const isGuardCreated = state.current.guard.guardCreatedBranches.includes(branch);
-          if (!isGuardCreated) {
+          if (
+            !shouldAutoCommit(
+              state.current.guard,
+              branch,
+              config.commitOnSettle,
+              config.protectedBranches,
+            )
+          ) {
             return;
           }
 
